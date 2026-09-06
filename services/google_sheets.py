@@ -10,20 +10,20 @@ from google.oauth2.service_account import Credentials
 
 SHEETS = {
     "produtos": "PRODUTOS",
-    "variacoes": "VARIACOES",
     "categorias": "CATEGORIAS",
     "tamanhos": "TAMANHOS",
     "cores": "CORES",
     "materiais": "MATERIAIS",
+    "kits": "KIT",
 }
 
 HEADERS = {
-    "PRODUTOS": ["id_produto", "nome_produto", "categoria_id", "abreviacao", "ativo", "data_cadastro"],
-    "VARIACOES": ["sku", "id_produto", "tamanho_id", "cor_id", "quantidade_kit", "material_id", "preco", "custo", "ativo", "data_cadastro", "observacao"],
+    "PRODUTOS": ["id_produto", "nome_produto", "categoria", "tamanho", "cor", "material", "preco", "custo", "qtd_kit", "sku", "codigo_barras"],
     "CATEGORIAS": ["id", "nome", "abreviacao", "ativo"],
     "TAMANHOS": ["id", "nome", "abreviacao", "ativo"],
     "CORES": ["id", "nome", "abreviacao", "ativo"],
     "MATERIAIS": ["id", "nome", "abreviacao", "ativo"],
+    "KIT": ["id", "nome", "abreviacao", "ativo"],
 }
 
 
@@ -51,15 +51,40 @@ def _spreadsheet() -> gspread.Spreadsheet:
         return _client().open_by_key(spreadsheet_id)
     except SheetsError:
         raise
+    except gspread.exceptions.SpreadsheetNotFound as exc:
+        raise SheetsError(
+            "Planilha nao encontrada ou sem permissao. Confirme o spreadsheet_id e compartilhe a planilha com o client_email da Service Account."
+        ) from exc
+    except PermissionError as exc:
+        raise SheetsError(
+            "A Service Account foi autenticada, mas nao tem permissao para acessar esta planilha. Compartilhe a planilha com o client_email configurado."
+        ) from exc
+    except gspread.exceptions.APIError as exc:
+        raise SheetsError(
+            "A API do Google recusou a abertura da planilha. Confirme que a Google Sheets API esta habilitada e que a Service Account tem acesso."
+        ) from exc
     except Exception as exc:
-        raise SheetsError("Nao foi possivel abrir a planilha configurada.") from exc
+        raise SheetsError(
+            "Nao foi possivel abrir a planilha. Verifique o formato do spreadsheet_id, as credenciais e o compartilhamento com a Service Account."
+        ) from exc
 
 
 def _worksheet(name: str) -> gspread.Worksheet:
     try:
-        return _spreadsheet().worksheet(name)
+        spreadsheet = _spreadsheet()
+        worksheets = spreadsheet.worksheets()
+        expected = " ".join(name.split()).casefold()
+        for worksheet in worksheets:
+            if " ".join(worksheet.title.split()).casefold() == expected:
+                return worksheet
+        available = ", ".join(worksheet.title for worksheet in worksheets)
+        raise SheetsError(f"A aba '{name}' nao foi encontrada. Abas disponiveis: {available or 'nenhuma'}.")
+    except SheetsError:
+        raise
+    except gspread.exceptions.APIError as exc:
+        raise SheetsError("O Google Sheets recusou o acesso. Confirme o compartilhamento com o e-mail da Service Account.") from exc
     except Exception as exc:
-        raise SheetsError(f"A aba '{name}' nao foi encontrada na planilha.") from exc
+        raise SheetsError("Nao foi possivel consultar as abas da planilha. Verifique o ID e o acesso da Service Account.") from exc
 
 
 @st.cache_data(ttl=30)
@@ -95,6 +120,14 @@ def update_row(name: str, row_number: int, values: Iterable[Any]) -> None:
         worksheet.update(f"A{row_number}:{chr(64 + len(row_values))}{row_number}", [row_values])
     except Exception as exc:
         raise SheetsError(f"Nao foi possivel atualizar a aba '{name}'.") from exc
+    invalidate_cache()
+
+
+def delete_row(name: str, row_number: int) -> None:
+    try:
+        _worksheet(name).delete_rows(row_number)
+    except Exception as exc:
+        raise SheetsError(f"Nao foi possivel excluir o registro da aba '{name}'.") from exc
     invalidate_cache()
 
 

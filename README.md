@@ -1,6 +1,6 @@
 # Gerador de catálogo MimoriaLab
 
-Aplicação Streamlit para cadastro de produtos e variações comerciais usando uma planilha do Google Sheets como banco de dados.
+Aplicação Streamlit para cadastro de produtos usando uma planilha do Google Sheets como banco de dados.
 
 ## Arquitetura
 
@@ -14,16 +14,18 @@ Aplicação Streamlit para cadastro de produtos e variações comerciais usando 
 1. Crie um projeto no [Google Cloud Console](https://console.cloud.google.com/), habilite a **Google Sheets API** e crie uma Service Account.
 2. Gere uma chave JSON para a Service Account. Não a versione.
 3. Crie uma planilha e compartilhe-a com o `client_email` da Service Account como Editor.
-4. Crie as abas `PRODUTOS`, `VARIACOES`, `CATEGORIAS`, `TAMANHOS`, `CORES` e `MATERIAIS`.
+4. Crie as abas `PRODUTOS`, `CATEGORIAS`, `TAMANHOS`, `CORES`, `MATERIAIS` e `KIT`.
 5. Use a primeira linha de cada aba como cabeçalho:
 
 ```text
-PRODUTOS: id_produto, nome_produto, categoria_id, abreviacao, ativo, data_cadastro
-VARIACOES: sku, id_produto, tamanho_id, cor_id, quantidade_kit, material_id, preco, custo, ativo, data_cadastro, observacao
-CATEGORIAS/TAMANHOS/CORES/MATERIAIS: id, nome, abreviacao, ativo
+PRODUTOS: id_produto, nome_produto, categoria, tamanho, cor, material, preco, custo, qtd_kit, sku, codigo_barras
+CATEGORIAS/TAMANHOS/CORES/MATERIAIS/KIT: id, nome, abreviacao, ativo
 ```
 
 6. Copie `.streamlit/secrets.toml.example` para `.streamlit/secrets.toml`, preenchendo o ID da planilha e os campos da chave JSON.
+7. Preencha também a seção `[auth]` com o usuário e a senha que serão usados na tela de login. O arquivo `secrets.toml` não deve ser commitado.
+
+Os nomes das abas são comparados ignorando espaços extras e diferenças entre maiúsculas e minúsculas. Se uma aba não for encontrada, a aplicação informa a lista de abas que a Service Account conseguiu enxergar; isso ajuda a confirmar se o ID da planilha e o compartilhamento estão corretos.
 
 ## Execução local
 
@@ -34,8 +36,41 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+## Login
+
+A aplicação exige login antes de exibir o catálogo. As credenciais ficam no `st.secrets`:
+
+```toml
+[auth]
+username = "seu-usuario"
+password = "uma-senha-forte"
+```
+
+O login é mantido apenas na sessão atual do Streamlit. Use o botão **Sair** na barra lateral para encerrar a sessão.
+
 ## Streamlit Community Cloud
 
 Publique o repositório, selecione `app.py` como arquivo principal e cole o conteúdo do `secrets.toml` em **Settings > Secrets**. A Service Account deve continuar compartilhando a planilha.
 
-Produtos, domínios e SKUs são validados sem diferenciar maiúsculas/minúsculas ou espaços extras. Variações em lote exibem uma prévia e gravam somente SKUs novos. Preço zero resulta em margem de 0%, evitando divisão por zero. O cache é invalidado após cada escrita.
+Produtos, domínios e SKUs são validados sem diferenciar maiúsculas/minúsculas ou espaços extras. O SKU é montado automaticamente sem hífens, concatenando `NUMERO_ID+CATEGORIA+TAMANHO+COR+KIT+MATERIAL` (por exemplo, `001AD5X5BRK2VF`). Cada abreviação deve ter de 1 a 4 letras ou números; não há limite total de caracteres para o SKU. Preço zero resulta em margem de 0%, evitando divisão por zero. O cache é invalidado após cada escrita.
+
+## Exclusão e edição
+
+Produtos podem ser editados e excluídos diretamente na tela **Produtos**. A exclusão remove a linha da aba `PRODUTOS`, conforme o novo modelo da planilha.
+
+## Navegação e código de barras
+
+- **Cadastrar produto** contém somente o formulário de inclusão.
+- **Consultar produtos** permite buscar rapidamente por ID, nome, SKU ou código de barras.
+- **Editar ou excluir** concentra as alterações e exclusões para evitar confusão.
+- O código de barras é opcional e informado manualmente. A geração automática de EAN-13 fica reservada para uma etapa futura.
+
+## Logotipo
+
+Coloque o arquivo da sua marca em:
+
+```text
+assets/logo.png
+```
+
+O logotipo será exibido automaticamente no topo da barra lateral. PNG com fundo transparente é recomendado. Para usar outro formato, altere o nome do arquivo e a extensão na variável `logo_path` em `app.py`.
