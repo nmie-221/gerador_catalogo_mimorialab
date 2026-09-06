@@ -13,6 +13,4 @@ def build_sku(product_id: str, category_abbreviation: str, size_abbreviation: st
         if not re.fullmatch(r"[A-Z0-9]{1,4}", normalized):
             raise ValueError(f"A abreviacao '{part}' deve conter de 1 a 4 letras ou numeros.")
     sku = numeric_id + "".join(str(part).strip().upper() for part in parts)
-    if len(sku) > 15:
-        raise ValueError(f"O SKU gerado ({sku}) possui {len(sku)} caracteres. Reduza as abreviacoes; cada uma pode ter no maximo 4 caracteres e o total deve ser de ate 15.")
     return sku

@@ -52,7 +52,7 @@ O login é mantido apenas na sessão atual do Streamlit. Use o botão **Sair** n
 
 Publique o repositório, selecione `app.py` como arquivo principal e cole o conteúdo do `secrets.toml` em **Settings > Secrets**. A Service Account deve continuar compartilhando a planilha.
 
-Produtos, domínios e SKUs são validados sem diferenciar maiúsculas/minúsculas ou espaços extras. O SKU é montado automaticamente sem hífens, concatenando `NUMERO_ID+CATEGORIA+TAMANHO+COR+KIT+MATERIAL` (por exemplo, `001AD5X5BRK2VF`). Cada abreviação deve ter de 1 a 4 letras ou números e o SKU não pode ultrapassar 15 caracteres. Preço zero resulta em margem de 0%, evitando divisão por zero. O cache é invalidado após cada escrita.
+Produtos, domínios e SKUs são validados sem diferenciar maiúsculas/minúsculas ou espaços extras. O SKU é montado automaticamente sem hífens, concatenando `NUMERO_ID+CATEGORIA+TAMANHO+COR+KIT+MATERIAL` (por exemplo, `001AD5X5BRK2VF`). Cada abreviação deve ter de 1 a 4 letras ou números; não há limite total de caracteres para o SKU. Preço zero resulta em margem de 0%, evitando divisão por zero. O cache é invalidado após cada escrita.
 
 ## Exclusão e edição
 

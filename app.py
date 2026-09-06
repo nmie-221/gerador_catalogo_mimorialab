@@ -116,8 +116,16 @@ if not is_authenticated():
     login_screen()
     st.stop()
 
-st.sidebar.button("Sair", on_click=logout)
-page = st.sidebar.selectbox("Navegação", ["Dashboard", "Produtos", "Catálogos auxiliares"])
+st.sidebar.subheader("Navegação")
+if "page" not in st.session_state:
+    st.session_state.page = "Dashboard"
+for navigation_page in ["Dashboard", "Produtos", "Catálogos auxiliares"]:
+    if st.sidebar.button(navigation_page, use_container_width=True, type="primary" if st.session_state.page == navigation_page else "secondary"):
+        st.session_state.page = navigation_page
+        st.rerun()
+st.sidebar.divider()
+st.sidebar.button("Sair", on_click=logout, use_container_width=True)
+page = st.session_state.page
 try:
     {"Dashboard": dashboard, "Produtos": products_page, "Catálogos auxiliares": auxiliary_page}[page]()
 except SheetsError as exc:
