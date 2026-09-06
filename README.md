@@ -64,3 +64,13 @@ Produtos podem ser editados e excluídos diretamente na tela **Produtos**. A exc
 - **Consultar produtos** permite buscar rapidamente por ID, nome, SKU ou código de barras.
 - **Editar ou excluir** concentra as alterações e exclusões para evitar confusão.
 - O código de barras é opcional e informado manualmente. A geração automática de EAN-13 fica reservada para uma etapa futura.
+
+## Logotipo
+
+Coloque o arquivo da sua marca em:
+
+```text
+assets/logo.png
+```
+
+O logotipo será exibido automaticamente no topo da barra lateral. PNG com fundo transparente é recomendado. Para usar outro formato, altere o nome do arquivo e a extensão na variável `logo_path` em `app.py`.

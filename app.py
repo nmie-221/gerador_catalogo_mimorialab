@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 import streamlit as st
 
@@ -8,6 +10,57 @@ from services.auth import is_authenticated, login_screen, logout
 from services.google_sheets import SheetsError
 
 st.set_page_config(page_title="Catálogo de Produtos", page_icon="📦", layout="wide")
+st.markdown(
+    """
+    <style>
+    :root {
+        --brand-purple: #7344B1;
+        --brand-purple-light: #AF84E5;
+        --brand-lilac: #F3EDFC;
+        --brand-dark: #2D1D41;
+        --brand-gold: #CC9D39;
+    }
+    div.stButton > button[kind="primary"],
+    div.stFormSubmitButton > button,
+    button[data-testid="baseButton-primary"] {
+        background-color: var(--brand-purple) !important;
+        border-color: var(--brand-purple) !important;
+        color: white !important;
+    }
+    div.stButton > button[kind="primary"]:hover,
+    div.stFormSubmitButton > button:hover,
+    button[data-testid="baseButton-primary"]:hover {
+        background-color: var(--brand-purple-light) !important;
+        border-color: var(--brand-purple-light) !important;
+    }
+    input, textarea, select, [role="combobox"] {
+        accent-color: var(--brand-purple) !important;
+    }
+    input:focus, textarea:focus, [data-baseweb="select"]:focus-within,
+    [data-baseweb="input"]:focus-within, [data-baseweb="textarea"]:focus-within {
+        border-color: var(--brand-purple-light) !important;
+        box-shadow: 0 0 0 1px var(--brand-purple-light) !important;
+    }
+    [data-baseweb="tag"] {
+        background-color: var(--brand-purple) !important;
+    }
+    [aria-selected="true"], [data-testid="stSidebar"] button[aria-pressed="true"] {
+        background-color: var(--brand-purple) !important;
+        color: white !important;
+    }
+    a, [data-testid="stMetricValue"] {
+        color: var(--brand-purple-light) !important;
+    }
+    [data-testid="stProgressBar"] > div > div {
+        background-color: var(--brand-purple) !important;
+    }
+    [data-testid="stSidebar"] {
+        border-right: 1px solid var(--brand-purple);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 def run(action):
@@ -144,11 +197,18 @@ if not is_authenticated():
     login_screen()
     st.stop()
 
-st.sidebar.title("📦 Catálogo")
+logo_path = Path(__file__).parent / "assets" / "logo.png"
+if logo_path.exists():
+    st.sidebar.image(str(logo_path), use_container_width=True)
+else:
+    st.sidebar.title("📦 Catálogo")
 st.sidebar.subheader("🧭 Navegação")
-if "page" not in st.session_state:
+navigation_pages = ["🔎 Consultar Produtos", "📝 Cadastrar produto", "⚙️ Editar ou excluir", "🧩 Catálogos auxiliares"]
+if st.session_state.get("page") == "Dashboard":
     st.session_state.page = "🔎 Consultar Produtos"
-for navigation_page in ["🔎 Consultar Produtos", "📝 Cadastrar produto", "⚙️ Editar ou excluir", "🧩 Catálogos auxiliares"]:
+if st.session_state.get("page") not in navigation_pages:
+    st.session_state.page = "🔎 Consultar Produtos"
+for navigation_page in navigation_pages:
     if st.sidebar.button(navigation_page, use_container_width=True, type="primary" if st.session_state.page == navigation_page else "secondary"):
         st.session_state.page = navigation_page
         st.rerun()
