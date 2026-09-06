@@ -63,7 +63,7 @@ def build_product_sku(product_id: str, category_id: str, size_id: str, color_id:
 
 
 def _product_row(product_id: str, name: str, category_id: str, size_id: str, color_id: str, material_id: str, price: float, cost: float, kit_id: str, barcode: str, sku: str) -> list[Any]:
-    return [product_id, clean(name), category_id, size_id, color_id, material_id, number(price, "O preco"), number(cost, "O custo"), kit_id, sku, clean(barcode)]
+    return [product_id, clean(name), category_id, size_id, color_id, material_id, number(price, "O preco"), number(cost, "O custo"), kit_id, sku, barcode]
 
 
 def add_product(name: str, category_id: str, size_id: str, color_id: str, material_id: str, price: float, cost: float, kit_id: str, barcode: str) -> str:
@@ -93,6 +93,8 @@ def edit_product(product_id: str, name: str, category_id: str, size_id: str, col
     if not unique(others["nome_produto"], name):
         raise ValueError("Ja existe outro produto com esse nome.")
     barcode = clean(barcode)
+    if barcode and not unique(others["codigo_barras"], barcode):
+        raise ValueError("Ja existe outro produto com esse codigo de barras.")
     if barcode and not unique(others["codigo_barras"], barcode):
         raise ValueError("Ja existe outro produto com esse codigo de barras.")
     sku = build_product_sku(product_id, category_id, size_id, color_id, material_id, kit_id)

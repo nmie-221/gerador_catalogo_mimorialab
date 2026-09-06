@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from repositories.data import active, add_domain, add_product, build_product_sku, catalog, delete_product, edit_product, table
+from repositories.data import active, add_domain, add_product, catalog, delete_product, edit_product, table
 from services.auth import is_authenticated, login_screen, logout
 from services.google_sheets import SheetsError
 
@@ -43,13 +43,13 @@ def product_form(values: dict | None = None, form_key: str = "new_product") -> t
         kit = domain_select(kits, "Kit", f"{form_key}_kit", values.get("qtd_kit"))
         price = st.number_input("Preço", min_value=0.0, value=float(values.get("preco", 0) or 0), step=0.01, key=f"{form_key}_price")
         cost = st.number_input("Custo", min_value=0.0, value=float(values.get("custo", 0) or 0), step=0.01, key=f"{form_key}_cost")
-        barcode = st.text_input("Código de barras", value=str(values.get("codigo_barras", "")))
+        barcode = st.text_input("Código de barras (opcional)", value=str(values.get("codigo_barras", "")))
         submitted = st.form_submit_button("Salvar")
     return submitted, name, category, size, color, material, price, cost, kit, barcode
 
 
-def products_page() -> None:
-    st.title("Produtos")
+def register_page() -> None:
+    st.title("Cadastrar produto")
     st.caption("O SKU é gerado automaticamente por categoria, tamanho, cor, kit e material.")
     submitted, name, category, size, color, material, price, cost, kit, barcode = product_form()
     if submitted and all([category, size, color, material, kit]):
@@ -57,9 +57,26 @@ def products_page() -> None:
         if result is not False:
             st.success(f"Produto cadastrado. SKU: {result}")
             st.rerun()
-    products = table("produtos")
-    st.dataframe(catalog(), use_container_width=True, hide_index=True)
+
+
+def query_page() -> None:
+    st.title("Consultar produtos")
+    products = catalog()
     if products.empty:
+        st.info("Nenhum produto cadastrado.")
+        return
+    search = st.text_input("Buscar por nome, SKU, código de barras ou ID")
+    if search:
+        mask = products.astype(str).apply(lambda column: column.str.contains(search, case=False, na=False)).any(axis=1)
+        products = products[mask]
+    st.dataframe(products, use_container_width=True, hide_index=True)
+
+
+def manage_page() -> None:
+    st.title("Editar ou excluir produto")
+    products = table("produtos")
+    if products.empty:
+        st.info("Nenhum produto cadastrado.")
         return
     options = {f"{row.nome_produto} ({row.id_produto})": row.id_produto for row in products.itertuples()}
     selected_label = st.selectbox("Produto para editar ou excluir", list(options), key="selected_product")
@@ -119,7 +136,7 @@ if not is_authenticated():
 st.sidebar.subheader("Navegação")
 if "page" not in st.session_state:
     st.session_state.page = "Dashboard"
-for navigation_page in ["Dashboard", "Produtos", "Catálogos auxiliares"]:
+for navigation_page in ["Dashboard", "Cadastrar produto", "Consultar produtos", "Editar ou excluir", "Catálogos auxiliares"]:
     if st.sidebar.button(navigation_page, use_container_width=True, type="primary" if st.session_state.page == navigation_page else "secondary"):
         st.session_state.page = navigation_page
         st.rerun()
@@ -127,6 +144,12 @@ st.sidebar.divider()
 st.sidebar.button("Sair", on_click=logout, use_container_width=True)
 page = st.session_state.page
 try:
-    {"Dashboard": dashboard, "Produtos": products_page, "Catálogos auxiliares": auxiliary_page}[page]()
+    {
+        "Dashboard": dashboard,
+        "Cadastrar produto": register_page,
+        "Consultar produtos": query_page,
+        "Editar ou excluir": manage_page,
+        "Catálogos auxiliares": auxiliary_page,
+    }[page]()
 except SheetsError as exc:
     st.error(str(exc))

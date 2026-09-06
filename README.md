@@ -57,3 +57,10 @@ Produtos, domínios e SKUs são validados sem diferenciar maiúsculas/minúscula
 ## Exclusão e edição
 
 Produtos podem ser editados e excluídos diretamente na tela **Produtos**. A exclusão remove a linha da aba `PRODUTOS`, conforme o novo modelo da planilha.
+
+## Navegação e código de barras
+
+- **Cadastrar produto** contém somente o formulário de inclusão.
+- **Consultar produtos** permite buscar rapidamente por ID, nome, SKU ou código de barras.
+- **Editar ou excluir** concentra as alterações e exclusões para evitar confusão.
+- O código de barras é opcional e informado manualmente. A geração automática de EAN-13 fica reservada para uma etapa futura.
