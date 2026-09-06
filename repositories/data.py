@@ -48,13 +48,13 @@ def _lookup(kind: str, identifier: str) -> pd.Series:
     return matches.iloc[0]
 
 
-def build_product_sku(category_id: str, size_id: str, color_id: str, material_id: str, kit_id: str) -> str:
+def build_product_sku(product_id: str, category_id: str, size_id: str, color_id: str, material_id: str, kit_id: str) -> str:
     category = _lookup("categorias", category_id)
     size = _lookup("tamanhos", size_id)
     color = _lookup("cores", color_id)
     material = _lookup("materiais", material_id)
     kit = _lookup("kits", kit_id)
-    return build_sku(str(category["abreviacao"]), str(size["abreviacao"]), str(color["abreviacao"]), str(kit["abreviacao"]), str(material["abreviacao"]))
+    return build_sku(product_id, str(category["abreviacao"]), str(size["abreviacao"]), str(color["abreviacao"]), str(kit["abreviacao"]), str(material["abreviacao"]))
 
 
 def _product_row(product_id: str, name: str, category_id: str, size_id: str, color_id: str, material_id: str, price: float, cost: float, kit_id: str, barcode: str, sku: str) -> list[Any]:
@@ -66,10 +66,11 @@ def add_product(name: str, category_id: str, size_id: str, color_id: str, materi
     name = required(name, "o nome do produto")
     if not unique(products["nome_produto"], name):
         raise ValueError("Ja existe um produto com esse nome.")
-    sku = build_product_sku(category_id, size_id, color_id, material_id, kit_id)
+    product_id = _next_id("P")
+    sku = build_product_sku(product_id, category_id, size_id, color_id, material_id, kit_id)
     if not unique(products["sku"], sku):
         raise ValueError("Ja existe um produto com esse SKU.")
-    append_rows("PRODUTOS", [_product_row(_next_id("P"), name, category_id, size_id, color_id, material_id, price, cost, kit_id, barcode, sku)])
+    append_rows("PRODUTOS", [_product_row(product_id, name, category_id, size_id, color_id, material_id, price, cost, kit_id, barcode, sku)])
     return sku
 
 
@@ -83,7 +84,7 @@ def edit_product(product_id: str, name: str, category_id: str, size_id: str, col
     others = products.drop(index=index)
     if not unique(others["nome_produto"], name):
         raise ValueError("Ja existe outro produto com esse nome.")
-    sku = build_product_sku(category_id, size_id, color_id, material_id, kit_id)
+    sku = build_product_sku(product_id, category_id, size_id, color_id, material_id, kit_id)
     if not unique(others["sku"], sku):
         raise ValueError("A edicao geraria um SKU que ja existe.")
     row = _product_row(product_id, name, category_id, size_id, color_id, material_id, price, cost, kit_id, barcode, sku)
