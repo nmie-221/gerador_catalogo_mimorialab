@@ -44,11 +44,16 @@ st.markdown(
     [data-baseweb="tag"] {
         background-color: var(--brand-purple) !important;
     }
+    [data-testid="stCheckbox"],
+    [data-testid="stCheckbox"] *,
     [data-testid="stCheckbox"] label,
     [data-testid="stCheckbox"] label > div,
-    [data-testid="stCheckbox"] label > div > div {
+    [data-testid="stCheckbox"] label > div > div,
+    [data-testid="stCheckbox"] [aria-selected="true"] {
         background-color: transparent !important;
+        color: var(--brand-lilac) !important;
     }
+    [data-testid="stCheckbox"] [role="checkbox"][aria-checked="true"],
     [data-testid="stCheckbox"] input:checked + div {
         background-color: var(--brand-purple) !important;
         border-color: var(--brand-purple) !important;
