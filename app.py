@@ -44,7 +44,28 @@ st.markdown(
     [data-baseweb="tag"] {
         background-color: var(--brand-purple) !important;
     }
-    [aria-selected="true"], [data-testid="stSidebar"] button[aria-pressed="true"] {
+    [data-testid="stCheckbox"] label,
+    [data-testid="stCheckbox"] label > div,
+    [data-testid="stCheckbox"] label > div > div {
+        background-color: transparent !important;
+    }
+    [data-testid="stCheckbox"] input:checked + div {
+        background-color: var(--brand-purple) !important;
+        border-color: var(--brand-purple) !important;
+    }
+    [data-testid="stCheckbox"] svg,
+    [data-testid="stCheckbox"] svg path {
+        color: var(--brand-purple) !important;
+        fill: var(--brand-purple) !important;
+    }
+    [data-baseweb="tab-highlight"] {
+        background-color: var(--brand-purple-light) !important;
+    }
+    [data-baseweb="tab"][aria-selected="true"] {
+        color: var(--brand-purple-light) !important;
+        background-color: transparent !important;
+    }
+    [data-testid="stSidebar"] button[aria-pressed="true"] {
         background-color: var(--brand-purple) !important;
         color: white !important;
     }
