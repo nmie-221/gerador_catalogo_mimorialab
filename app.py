@@ -66,6 +66,19 @@ def query_page() -> None:
         st.info("Nenhum produto cadastrado.")
         return
     search = st.text_input("Buscar por nome, SKU, código de barras ou ID")
+    filters = st.columns(5)
+    filter_columns = [
+        ("Categoria", "Categoria"),
+        ("Tamanho", "Tamanho"),
+        ("Cor", "Cor"),
+        ("Material", "Material"),
+        ("Kit", "Kit"),
+    ]
+    for column, (label, field) in zip(filters, filter_columns):
+        options = sorted(products[field].dropna().astype(str).unique())
+        selected = column.multiselect(label, options, key=f"dashboard_filter_{field}")
+        if selected:
+            products = products[products[field].astype(str).isin(selected)]
     if search:
         mask = products.astype(str).apply(lambda column: column.str.contains(search, case=False, na=False)).any(axis=1)
         products = products[mask]
@@ -73,32 +86,36 @@ def query_page() -> None:
 
 
 def manage_page() -> None:
-    st.title("Editar ou excluir produto")
+    st.title("Gerenciar produtos")
     products = table("produtos")
     if products.empty:
         st.info("Nenhum produto cadastrado.")
         return
+    edit_tab, delete_tab = st.tabs(["Editar produto", "Excluir produto"])
     options = {f"{row.nome_produto} ({row.id_produto})": row.id_produto for row in products.itertuples()}
-    selected_label = st.selectbox("Produto para editar ou excluir", list(options), key="selected_product")
-    selected_id = options[selected_label]
-    selected = products[products["id_produto"].astype(str) == str(selected_id)].iloc[0].to_dict()
-    with st.expander("Editar produto"):
+    with edit_tab:
+        selected_label = st.selectbox("Produto para editar", list(options), key="edit_selected_product")
+        selected_id = options[selected_label]
+        selected = products[products["id_produto"].astype(str) == str(selected_id)].iloc[0].to_dict()
         submitted, name, category, size, color, material, price, cost, kit, barcode = product_form(selected, "edit_product")
         if submitted and all([category, size, color, material, kit]):
             result = run(lambda: edit_product(selected_id, name, category, size, color, material, price, cost, kit, barcode))
             if result is not False:
                 st.success(f"Produto atualizado. SKU: {result}")
                 st.rerun()
-    st.warning("A exclusão remove a linha do cadastro PRODUTOS.")
-    if st.button("Excluir produto", type="secondary"):
-        st.session_state.confirm_delete = selected_id
-    if st.session_state.get("confirm_delete") == selected_id:
-        if st.button("Confirmar exclusão", key="confirm_delete_product"):
-            result = run(lambda: delete_product(selected_id))
-            if result is not False:
-                st.success("Produto excluído.")
-                st.session_state.pop("confirm_delete", None)
-                st.rerun()
+    with delete_tab:
+        selected_label = st.selectbox("Produto para excluir", list(options), key="delete_selected_product")
+        selected_id = options[selected_label]
+        st.warning("A exclusão remove a linha do cadastro PRODUTOS.")
+        if st.button("Excluir produto", type="secondary"):
+            st.session_state.confirm_delete = selected_id
+        if st.session_state.get("confirm_delete") == selected_id:
+            if st.button("Confirmar exclusão", key="confirm_delete_product"):
+                result = run(lambda: delete_product(selected_id))
+                if result is not False:
+                    st.success("Produto excluído.")
+                    st.session_state.pop("confirm_delete", None)
+                    st.rerun()
 
 
 def auxiliary_page() -> None:
@@ -120,13 +137,7 @@ def auxiliary_page() -> None:
 
 
 def dashboard() -> None:
-    st.title("Dashboard")
-    products = table("produtos")
-    domains = [len(active(kind)) for kind in ("categorias", "tamanhos", "cores", "materiais", "kits")]
-    cols = st.columns(4)
-    for col, label, value in zip(cols, ["Produtos", "Categorias", "SKUs", "Kits"], [len(products), domains[0], products["sku"].nunique() if not products.empty else 0, domains[4]]):
-        col.metric(label, value)
-    st.dataframe(catalog().tail(10), use_container_width=True, hide_index=True)
+    query_page()
 
 
 if not is_authenticated():
@@ -136,7 +147,7 @@ if not is_authenticated():
 st.sidebar.subheader("Navegação")
 if "page" not in st.session_state:
     st.session_state.page = "Dashboard"
-for navigation_page in ["Dashboard", "Cadastrar produto", "Consultar produtos", "Editar ou excluir", "Catálogos auxiliares"]:
+for navigation_page in ["Dashboard", "Cadastrar produto", "Editar ou excluir", "Catálogos auxiliares"]:
     if st.sidebar.button(navigation_page, use_container_width=True, type="primary" if st.session_state.page == navigation_page else "secondary"):
         st.session_state.page = navigation_page
         st.rerun()
@@ -147,7 +158,6 @@ try:
     {
         "Dashboard": dashboard,
         "Cadastrar produto": register_page,
-        "Consultar produtos": query_page,
         "Editar ou excluir": manage_page,
         "Catálogos auxiliares": auxiliary_page,
     }[page]()
