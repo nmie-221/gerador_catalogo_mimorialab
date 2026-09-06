@@ -49,8 +49,8 @@ def product_form(values: dict | None = None, form_key: str = "new_product") -> t
 
 
 def register_page() -> None:
-    st.title("Cadastrar produto")
-    st.caption("O SKU é gerado automaticamente por categoria, tamanho, cor, kit e material.")
+    st.title("📝 Cadastrar produto")
+    st.caption("✨ O SKU é gerado automaticamente por categoria, tamanho, cor, kit e material.")
     submitted, name, category, size, color, material, price, cost, kit, barcode = product_form()
     if submitted and all([category, size, color, material, kit]):
         result = run(lambda: add_product(name, category, size, color, material, price, cost, kit, barcode))
@@ -60,10 +60,10 @@ def register_page() -> None:
 
 
 def query_page() -> None:
-    st.title("Consultar produtos")
+    st.title("🔎 Consultar produtos")
     products = catalog()
     if products.empty:
-        st.info("Nenhum produto cadastrado.")
+        st.info("📦 Nenhum produto cadastrado.")
         return
     search = st.text_input("Buscar por nome, SKU, código de barras ou ID")
     filters = st.columns(5)
@@ -86,12 +86,12 @@ def query_page() -> None:
 
 
 def manage_page() -> None:
-    st.title("Gerenciar produtos")
+    st.title("⚙️ Gerenciar produtos")
     products = table("produtos")
     if products.empty:
         st.info("Nenhum produto cadastrado.")
         return
-    edit_tab, delete_tab = st.tabs(["Editar produto", "Excluir produto"])
+    edit_tab, delete_tab = st.tabs(["✏️ Editar produto", "🗑️ Excluir produto"])
     options = {f"{row.nome_produto} ({row.id_produto})": row.id_produto for row in products.itertuples()}
     with edit_tab:
         selected_label = st.selectbox("Produto para editar", list(options), key="edit_selected_product")
@@ -119,7 +119,7 @@ def manage_page() -> None:
 
 
 def auxiliary_page() -> None:
-    st.title("Cadastros auxiliares")
+    st.title("🧩 Cadastros auxiliares")
     definitions = [("Categorias", "categorias"), ("Tamanhos", "tamanhos"), ("Cores", "cores"), ("Materiais", "materiais"), ("Kits", "kits")]
     tabs = st.tabs([label for label, _ in definitions])
     for tab, (label, kind) in zip(tabs, definitions):
@@ -144,22 +144,23 @@ if not is_authenticated():
     login_screen()
     st.stop()
 
-st.sidebar.subheader("Navegação")
+st.sidebar.title("📦 Catálogo")
+st.sidebar.subheader("🧭 Navegação")
 if "page" not in st.session_state:
-    st.session_state.page = "Dashboard"
-for navigation_page in ["Dashboard", "Cadastrar produto", "Editar ou excluir", "Catálogos auxiliares"]:
+    st.session_state.page = "🔎 Consultar Produtos"
+for navigation_page in ["🔎 Consultar Produtos", "📝 Cadastrar produto", "⚙️ Editar ou excluir", "🧩 Catálogos auxiliares"]:
     if st.sidebar.button(navigation_page, use_container_width=True, type="primary" if st.session_state.page == navigation_page else "secondary"):
         st.session_state.page = navigation_page
         st.rerun()
 st.sidebar.divider()
-st.sidebar.button("Sair", on_click=logout, use_container_width=True)
+st.sidebar.button("🚪 Sair", on_click=logout, use_container_width=True)
 page = st.session_state.page
 try:
     {
-        "Dashboard": dashboard,
-        "Cadastrar produto": register_page,
-        "Editar ou excluir": manage_page,
-        "Catálogos auxiliares": auxiliary_page,
+        "🔎 Consultar Produtos": dashboard,
+        "📝 Cadastrar produto": register_page,
+        "⚙️ Editar ou excluir": manage_page,
+        "🧩 Catálogos auxiliares": auxiliary_page,
     }[page]()
 except SheetsError as exc:
     st.error(str(exc))
