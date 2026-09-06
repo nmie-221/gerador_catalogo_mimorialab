@@ -18,6 +18,11 @@ def active(kind: str) -> pd.DataFrame:
     return frame[frame["ativo"].astype(str).str.casefold().isin(["sim", "true", "1"])]
 
 
+def fresh_table(kind: str) -> pd.DataFrame:
+    read_sheet.clear()
+    return table(kind)
+
+
 def _next_id(prefix: str) -> str:
     values = table("produtos")["id_produto"].astype(str)
     numbers = [int(value[len(prefix):]) for value in values if value.startswith(prefix) and value[len(prefix):].isdigit()]
@@ -62,10 +67,13 @@ def _product_row(product_id: str, name: str, category_id: str, size_id: str, col
 
 
 def add_product(name: str, category_id: str, size_id: str, color_id: str, material_id: str, price: float, cost: float, kit_id: str, barcode: str) -> str:
-    products = table("produtos")
+    products = fresh_table("produtos")
     name = required(name, "o nome do produto")
     if not unique(products["nome_produto"], name):
         raise ValueError("Ja existe um produto com esse nome.")
+    barcode = clean(barcode)
+    if barcode and not unique(products["codigo_barras"], barcode):
+        raise ValueError("Ja existe um produto com esse codigo de barras.")
     product_id = _next_id("P")
     sku = build_product_sku(product_id, category_id, size_id, color_id, material_id, kit_id)
     if not unique(products["sku"], sku):
@@ -75,7 +83,7 @@ def add_product(name: str, category_id: str, size_id: str, color_id: str, materi
 
 
 def edit_product(product_id: str, name: str, category_id: str, size_id: str, color_id: str, material_id: str, price: float, cost: float, kit_id: str, barcode: str) -> str:
-    products = table("produtos")
+    products = fresh_table("produtos")
     matches = products.index[products["id_produto"].astype(str) == str(product_id)].tolist()
     if not matches:
         raise ValueError("Produto nao encontrado.")
@@ -84,6 +92,9 @@ def edit_product(product_id: str, name: str, category_id: str, size_id: str, col
     others = products.drop(index=index)
     if not unique(others["nome_produto"], name):
         raise ValueError("Ja existe outro produto com esse nome.")
+    barcode = clean(barcode)
+    if barcode and not unique(others["codigo_barras"], barcode):
+        raise ValueError("Ja existe outro produto com esse codigo de barras.")
     sku = build_product_sku(product_id, category_id, size_id, color_id, material_id, kit_id)
     if not unique(others["sku"], sku):
         raise ValueError("A edicao geraria um SKU que ja existe.")

@@ -26,8 +26,8 @@ def unique(values: Iterable[object], candidate: object) -> bool:
 
 def abbreviation(value: object) -> str:
     result = clean(value).upper()
-    if not re.fullmatch(r"[A-Z0-9]+", result):
-        raise ValueError("A abreviacao deve conter apenas letras e numeros.")
+    if not re.fullmatch(r"[A-Z0-9]{1,4}", result):
+        raise ValueError("A abreviacao deve conter de 1 a 4 letras ou numeros.")
     return result
 
 

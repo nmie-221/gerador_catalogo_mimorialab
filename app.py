@@ -18,12 +18,16 @@ def run(action):
         return False
 
 
-def domain_select(frame: pd.DataFrame, label: str, key: str) -> str | None:
+def domain_select(frame: pd.DataFrame, label: str, key: str, selected_id: str | None = None) -> str | None:
     if frame.empty:
         st.warning(f"Nenhum registro ativo disponível para {label.lower()}.")
         return None
     options = {f"{row['nome']} ({row['id']})": row["id"] for _, row in frame.iterrows()}
-    selected = st.selectbox(label, list(options), key=key)
+    labels = list(options)
+    default_index = 0
+    if selected_id in options.values():
+        default_index = list(options.values()).index(selected_id)
+    selected = st.selectbox(label, labels, index=default_index, key=key)
     return options[selected]
 
 
@@ -32,11 +36,11 @@ def product_form(values: dict | None = None, form_key: str = "new_product") -> t
     categories, sizes, colors, materials, kits = (active(kind) for kind in ("categorias", "tamanhos", "cores", "materiais", "kits"))
     with st.form(form_key):
         name = st.text_input("Nome do produto", value=str(values.get("nome_produto", "")))
-        category = domain_select(categories, "Categoria", f"{form_key}_category")
-        size = domain_select(sizes, "Tamanho", f"{form_key}_size")
-        color = domain_select(colors, "Cor/tema", f"{form_key}_color")
-        material = domain_select(materials, "Material", f"{form_key}_material")
-        kit = domain_select(kits, "Kit", f"{form_key}_kit")
+        category = domain_select(categories, "Categoria", f"{form_key}_category", values.get("categoria"))
+        size = domain_select(sizes, "Tamanho", f"{form_key}_size", values.get("tamanho"))
+        color = domain_select(colors, "Cor/tema", f"{form_key}_color", values.get("cor"))
+        material = domain_select(materials, "Material", f"{form_key}_material", values.get("material"))
+        kit = domain_select(kits, "Kit", f"{form_key}_kit", values.get("qtd_kit"))
         price = st.number_input("Preço", min_value=0.0, value=float(values.get("preco", 0) or 0), step=0.01, key=f"{form_key}_price")
         cost = st.number_input("Custo", min_value=0.0, value=float(values.get("custo", 0) or 0), step=0.01, key=f"{form_key}_cost")
         barcode = st.text_input("Código de barras", value=str(values.get("codigo_barras", "")))
@@ -113,7 +117,7 @@ if not is_authenticated():
     st.stop()
 
 st.sidebar.button("Sair", on_click=logout)
-page = st.sidebar.radio("Navegação", ["Dashboard", "Produtos", "Catálogos auxiliares"])
+page = st.sidebar.selectbox("Navegação", ["Dashboard", "Produtos", "Catálogos auxiliares"])
 try:
     {"Dashboard": dashboard, "Produtos": products_page, "Catálogos auxiliares": auxiliary_page}[page]()
 except SheetsError as exc:
