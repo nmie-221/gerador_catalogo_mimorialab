@@ -24,6 +24,7 @@ CATEGORIAS/TAMANHOS/CORES/MATERIAIS: id, nome, abreviacao, ativo
 ```
 
 6. Copie `.streamlit/secrets.toml.example` para `.streamlit/secrets.toml`, preenchendo o ID da planilha e os campos da chave JSON.
+7. Preencha também a seção `[auth]` com o usuário e a senha que serão usados na tela de login. O arquivo `secrets.toml` não deve ser commitado.
 
 ## Execução local
 
@@ -34,8 +35,26 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+## Login
+
+A aplicação exige login antes de exibir o catálogo. As credenciais ficam no `st.secrets`:
+
+```toml
+[auth]
+username = "seu-usuario"
+password = "uma-senha-forte"
+```
+
+O login é mantido apenas na sessão atual do Streamlit. Use o botão **Sair** na barra lateral para encerrar a sessão.
+
 ## Streamlit Community Cloud
 
 Publique o repositório, selecione `app.py` como arquivo principal e cole o conteúdo do `secrets.toml` em **Settings > Secrets**. A Service Account deve continuar compartilhando a planilha.
 
 Produtos, domínios e SKUs são validados sem diferenciar maiúsculas/minúsculas ou espaços extras. Variações em lote exibem uma prévia e gravam somente SKUs novos. Preço zero resulta em margem de 0%, evitando divisão por zero. O cache é invalidado após cada escrita.
+
+## Exclusão
+
+As opções **Excluir produto** e **Excluir variação** fazem desativação lógica: o registro recebe `ativo = Nao`, não é apagado fisicamente e continua disponível para preservar o histórico.
+
+Produtos e variações também podem ser editados. Ao alterar produto, tamanho, cor, kit ou material de uma variação, o SKU é recalculado e validado contra os demais registros.

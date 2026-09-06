@@ -10,9 +10,14 @@ from repositories.data import (
     add_variations,
     build_variation_options,
     catalog,
+    deactivate_product,
+    deactivate_variation,
+    edit_product,
+    edit_variation,
     table,
     variation_sku,
 )
+from services.auth import is_authenticated, login_screen, logout
 from services.google_sheets import HEADERS, SHEETS, SheetsError
 from utils.validators import number
 
@@ -63,7 +68,42 @@ def products_page() -> None:
         if error_message(lambda: add_product(name, category, abbreviation, enabled)) is not False:
             st.success("Produto cadastrado com sucesso.")
             st.rerun()
-    st.dataframe(table("produtos"), use_container_width=True, hide_index=True)
+    products = table("produtos")
+    st.dataframe(products, use_container_width=True, hide_index=True)
+    st.subheader("Excluir produto")
+    product_options = {
+        f"{row.nome_produto} ({row.id_produto})": row.id_produto
+        for row in products.itertuples()
+    }
+    if product_options:
+        st.subheader("Editar produto")
+        edit_product_id = product_options[st.selectbox("Produto para edição", list(product_options), key="edit_product")]
+        edit_row = products[products["id_produto"].astype(str) == str(edit_product_id)].iloc[0]
+        with st.form("edit_product_form"):
+            edit_name = st.text_input("Nome", value=str(edit_row["nome_produto"]))
+            edit_category = st.selectbox(
+                "Categoria", categories["id"].tolist(), index=list(categories["id"]).index(edit_row["categoria_id"]),
+                format_func=lambda item: categories.set_index("id").loc[item, "nome"],
+            )
+            edit_abbreviation = st.text_input("Abreviação", value=str(edit_row["abreviacao"]))
+            edit_enabled = st.checkbox("Ativo", value=str(edit_row["ativo"]).casefold() in ("sim", "true", "1"))
+            edit_submitted = st.form_submit_button("Salvar alterações")
+        if edit_submitted:
+            result = error_message(lambda: edit_product(edit_product_id, edit_name, edit_category, edit_abbreviation, edit_enabled))
+            if result is not False:
+                st.success("Produto atualizado com sucesso.")
+                st.rerun()
+        selected_product = st.selectbox("Produto", list(product_options), key="delete_product")
+        if st.button("Excluir produto", type="secondary"):
+            st.session_state.confirm_product_delete = product_options[selected_product]
+        if st.session_state.get("confirm_product_delete") == product_options[selected_product]:
+            st.warning("O produto será apenas desativado e permanecerá no histórico.")
+            if st.button("Confirmar exclusão do produto", key="confirm_product_delete"):
+                result = error_message(lambda: deactivate_product(product_options[selected_product]))
+                if result is not False:
+                    st.success("Produto desativado com sucesso.")
+                    st.session_state.pop("confirm_product_delete", None)
+                    st.rerun()
 
 
 def variations_page() -> None:
@@ -112,6 +152,44 @@ def variations_page() -> None:
                 if result is not False and result is not None:
                     st.success(f"{result} variação(ões) nova(s) inserida(s).")
                     st.rerun()
+    st.subheader("Editar variação")
+    variations = table("variacoes")
+    variation_options = {
+        f"{row.sku} ({row.id_produto})": row.sku
+        for row in variations.itertuples()
+    }
+    if variation_options:
+        edit_variation_sku = variation_options[st.selectbox("Variação para edição", list(variation_options), key="edit_variation")]
+        edit_variation_row = variations[variations["sku"].astype(str) == str(edit_variation_sku)].iloc[0]
+        with st.form("edit_variation_form"):
+            edit_product_id = st.selectbox("Produto", products["id"].tolist() if "id" in products else products["id_produto"].tolist(), index=0, format_func=lambda item: item)
+            edit_size_id = st.selectbox("Tamanho", sizes["id"].tolist(), index=0, format_func=lambda item: sizes.set_index("id").loc[item, "nome"])
+            edit_color_id = st.selectbox("Cor", colors["id"].tolist(), index=0, format_func=lambda item: colors.set_index("id").loc[item, "nome"])
+            edit_kit = st.number_input("Quantidade do kit", min_value=1, value=int(edit_variation_row["quantidade_kit"]), step=1, key="edit_kit")
+            edit_material_id = st.selectbox("Material", materials["id"].tolist(), index=0, format_func=lambda item: materials.set_index("id").loc[item, "nome"])
+            edit_price = st.number_input("Preço", min_value=0.0, value=float(edit_variation_row["preco"] or 0), step=0.01, key="edit_price")
+            edit_cost = st.number_input("Custo", min_value=0.0, value=float(edit_variation_row["custo"] or 0), step=0.01, key="edit_cost")
+            edit_note = st.text_area("Observação", value=str(edit_variation_row["observacao"]), key="edit_note")
+            edit_enabled = st.checkbox("Ativo", value=str(edit_variation_row["ativo"]).casefold() in ("sim", "true", "1"), key="edit_enabled")
+            edit_submitted = st.form_submit_button("Salvar alterações")
+        if edit_submitted:
+            result = error_message(lambda: edit_variation(edit_variation_sku, edit_product_id, edit_size_id, edit_color_id, int(edit_kit), edit_material_id, edit_price, edit_cost, edit_enabled, edit_note))
+            if result is not False:
+                st.success(f"Variação atualizada. Novo SKU: {result}")
+                st.rerun()
+    st.subheader("Excluir variação")
+    if variation_options:
+        selected_variation = st.selectbox("Variação", list(variation_options), key="delete_variation")
+        if st.button("Excluir variação", type="secondary"):
+            st.session_state.confirm_variation_delete = variation_options[selected_variation]
+        if st.session_state.get("confirm_variation_delete") == variation_options[selected_variation]:
+            st.warning("A variação será apenas desativada e permanecerá no histórico.")
+            if st.button("Confirmar exclusão da variação", key="confirm_variation_delete"):
+                result = error_message(lambda: deactivate_variation(variation_options[selected_variation]))
+                if result is not False:
+                    st.success("Variação desativada com sucesso.")
+                    st.session_state.pop("confirm_variation_delete", None)
+                    st.rerun()
 
 
 def catalog_page() -> None:
@@ -152,7 +230,11 @@ def auxiliary_page() -> None:
 
 
 try:
+    if not is_authenticated():
+        login_screen()
+        st.stop()
     page = st.sidebar.radio("Navegação", ["Dashboard", "Produtos", "Variações", "Catálogo", "Cadastros Auxiliares"])
+    st.sidebar.button("Sair", on_click=logout)
     {"Dashboard": dashboard, "Produtos": products_page, "Variações": variations_page, "Catálogo": catalog_page, "Cadastros Auxiliares": auxiliary_page}[page]()
 except SheetsError as exc:
     st.error(str(exc))

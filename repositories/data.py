@@ -88,6 +88,59 @@ def add_variations(rows: list[dict[str, Any]]) -> int:
     return len(fresh)
 
 
+def deactivate_product(product_id: str) -> None:
+    products = table("produtos")
+    matches = products.index[products["id_produto"].astype(str) == str(product_id)].tolist()
+    if not matches:
+        raise ValueError("Produto nao encontrado.")
+    row = products.iloc[matches[0]].tolist()
+    row[4] = "Nao"
+    update_row("PRODUTOS", matches[0] + 2, row)
+
+
+def deactivate_variation(sku: str) -> None:
+    variations = table("variacoes")
+    matches = variations.index[variations["sku"].astype(str).map(normalize) == normalize(sku)].tolist()
+    if not matches:
+        raise ValueError("Variacao nao encontrada.")
+    row = variations.iloc[matches[0]].tolist()
+    row[8] = "Nao"
+    update_row("VARIACOES", matches[0] + 2, row)
+
+
+def edit_product(product_id: str, name: str, category_id: str, abbrev: str, enabled: bool) -> None:
+    products = table("produtos")
+    matches = products.index[products["id_produto"].astype(str) == str(product_id)].tolist()
+    if not matches:
+        raise ValueError("Produto nao encontrado.")
+    clean_name = required(name, "o nome do produto")
+    clean_abbrev = abbreviation(required(abbrev, "a abreviacao"))
+    current_index = matches[0]
+    other_products = products.drop(index=current_index)
+    if not unique(other_products["nome_produto"], clean_name):
+        raise ValueError("Ja existe outro produto com esse nome.")
+    if not unique(other_products["abreviacao"], clean_abbrev):
+        raise ValueError("Ja existe outro produto com essa abreviacao.")
+    row = products.iloc[current_index].tolist()
+    row[1:5] = [clean_name, category_id, clean_abbrev, "Sim" if enabled else "Nao"]
+    update_row("PRODUTOS", current_index + 2, row)
+
+
+def edit_variation(original_sku: str, product_id: str, size_id: str, color_id: str, kit: int, material_id: str, price: float, cost: float, enabled: bool, note: str) -> str:
+    variations = table("variacoes")
+    matches = variations.index[variations["sku"].astype(str).map(normalize) == normalize(original_sku)].tolist()
+    if not matches:
+        raise ValueError("Variacao nao encontrada.")
+    new_sku = variation_sku(product_id, size_id, color_id, int(kit), material_id)
+    current_index = matches[0]
+    other_skus = variations.drop(index=current_index)["sku"]
+    if not unique(other_skus, new_sku):
+        raise ValueError("A edicao geraria um SKU que ja existe.")
+    row = _variation_row(product_id, size_id, color_id, int(kit), material_id, number(price, "O preco"), number(cost, "O custo"), enabled, note, new_sku)
+    update_row("VARIACOES", current_index + 2, row)
+    return new_sku
+
+
 def build_variation_options(product_id: str, size_ids: list[str], color_ids: list[str], kits: list[int], material_ids: list[str], price: float, cost: float, enabled: bool, note: str) -> list[dict[str, Any]]:
     return [
         {"sku": variation_sku(product_id, size_id, color_id, kit, material_id), "product_id": product_id, "size_id": size_id, "color_id": color_id, "kit": kit, "material_id": material_id, "price": price, "cost": cost, "enabled": enabled, "note": note}
