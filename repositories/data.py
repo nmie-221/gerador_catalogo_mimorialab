@@ -129,8 +129,8 @@ def catalog() -> pd.DataFrame:
     result["Cor"] = result["cor"].map(colors)
     result["Material"] = result["material"].map(materials)
     result["Kit"] = result["qtd_kit"].map(kits)
-    result["Preco"] = pd.to_numeric(result["preco"], errors="coerce").fillna(0)
-    result["Custo"] = pd.to_numeric(result["custo"], errors="coerce").fillna(0)
+    result["Preco"] = pd.to_numeric(result["preco"], errors="coerce").fillna(0) / 100
+    result["Custo"] = pd.to_numeric(result["custo"], errors="coerce").fillna(0) / 100
     result["Lucro"] = result["Preco"] - result["Custo"]
     result["Margem %"] = result.apply(lambda row: row["Lucro"] / row["Preco"] * 100 if row["Preco"] else 0, axis=1)
     return result[["id_produto", "nome_produto", "Categoria", "Tamanho", "Cor", "Material", "Kit", "sku", "codigo_barras", "Preco", "Custo", "Lucro", "Margem %"]]

@@ -161,7 +161,17 @@ def query_page() -> None:
     if search:
         mask = products.astype(str).apply(lambda column: column.str.contains(search, case=False, na=False)).any(axis=1)
         products = products[mask]
-    st.dataframe(products, use_container_width=True, hide_index=True)
+    st.dataframe(
+        products,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Preco": st.column_config.NumberColumn("Preço", format="R$ %.2f"),
+            "Custo": st.column_config.NumberColumn("Custo", format="R$ %.2f"),
+            "Lucro": st.column_config.NumberColumn("Lucro", format="R$ %.2f"),
+            "Margem %": st.column_config.NumberColumn("Margem %", format="%.2f%%"),
+        },
+    )
 
 
 def manage_page() -> None:
