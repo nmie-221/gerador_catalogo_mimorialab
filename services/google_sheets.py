@@ -18,7 +18,7 @@ SHEETS = {
 }
 
 HEADERS = {
-    "PRODUTOS": ["id_produto", "nome_produto", "categoria", "tamanho", "cor", "material", "preco", "custo", "qtd_kit", "sku", "codigo_barras"],
+    "PRODUTOS": ["id_produto", "nome_produto", "categoria", "tamanho", "cor", "material", "preco", "custo", "qtd_kit", "sku", "codigo_barras", "imagem_url"],
     "CATEGORIAS": ["id", "nome", "abreviacao", "ativo"],
     "TAMANHOS": ["id", "nome", "abreviacao", "ativo"],
     "CORES": ["id", "nome", "abreviacao", "ativo"],

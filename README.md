@@ -18,7 +18,7 @@ Aplicação Streamlit para cadastro de produtos usando uma planilha do Google Sh
 5. Use a primeira linha de cada aba como cabeçalho:
 
 ```text
-PRODUTOS: id_produto, nome_produto, categoria, tamanho, cor, material, preco, custo, qtd_kit, sku, codigo_barras
+PRODUTOS: id_produto, nome_produto, categoria, tamanho, cor, material, preco, custo, qtd_kit, sku, codigo_barras, imagem_url
 CATEGORIAS/TAMANHOS/CORES/MATERIAIS/KIT: id, nome, abreviacao, ativo
 ```
 
@@ -62,6 +62,7 @@ Produtos podem ser editados e excluídos diretamente na tela **Produtos**. A exc
 
 - **Cadastrar produto** contém somente o formulário de inclusão.
 - **Consultar produtos** permite buscar rapidamente por ID, nome, SKU ou código de barras.
+- A coluna `imagem_url` é opcional e deve conter uma URL pública de imagem; ela aparece como miniatura na consulta.
 - **Editar ou excluir** concentra as alterações e exclusões para evitar confusão.
 - O código de barras é opcional e informado manualmente. A geração automática de EAN-13 fica reservada para uma etapa futura.
 

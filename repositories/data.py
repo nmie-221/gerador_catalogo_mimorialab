@@ -62,11 +62,11 @@ def build_product_sku(product_id: str, category_id: str, size_id: str, color_id:
     return build_sku(product_id, str(category["abreviacao"]), str(size["abreviacao"]), str(color["abreviacao"]), str(kit["abreviacao"]), str(material["abreviacao"]))
 
 
-def _product_row(product_id: str, name: str, category_id: str, size_id: str, color_id: str, material_id: str, price: float, cost: float, kit_id: str, barcode: str, sku: str) -> list[Any]:
-    return [product_id, clean(name), category_id, size_id, color_id, material_id, number(price, "O preco"), number(cost, "O custo"), kit_id, sku, barcode]
+def _product_row(product_id: str, name: str, category_id: str, size_id: str, color_id: str, material_id: str, price: float, cost: float, kit_id: str, barcode: str, image_url: str, sku: str) -> list[Any]:
+    return [product_id, clean(name), category_id, size_id, color_id, material_id, number(price, "O preco"), number(cost, "O custo"), kit_id, sku, barcode, clean(image_url)]
 
 
-def add_product(name: str, category_id: str, size_id: str, color_id: str, material_id: str, price: float, cost: float, kit_id: str, barcode: str) -> str:
+def add_product(name: str, category_id: str, size_id: str, color_id: str, material_id: str, price: float, cost: float, kit_id: str, barcode: str, image_url: str) -> str:
     products = fresh_table("produtos")
     name = required(name, "o nome do produto")
     if not unique(products["nome_produto"], name):
@@ -78,11 +78,11 @@ def add_product(name: str, category_id: str, size_id: str, color_id: str, materi
     sku = build_product_sku(product_id, category_id, size_id, color_id, material_id, kit_id)
     if not unique(products["sku"], sku):
         raise ValueError("Ja existe um produto com esse SKU.")
-    append_rows("PRODUTOS", [_product_row(product_id, name, category_id, size_id, color_id, material_id, price, cost, kit_id, barcode, sku)])
+    append_rows("PRODUTOS", [_product_row(product_id, name, category_id, size_id, color_id, material_id, price, cost, kit_id, barcode, image_url, sku)])
     return sku
 
 
-def edit_product(product_id: str, name: str, category_id: str, size_id: str, color_id: str, material_id: str, price: float, cost: float, kit_id: str, barcode: str) -> str:
+def edit_product(product_id: str, name: str, category_id: str, size_id: str, color_id: str, material_id: str, price: float, cost: float, kit_id: str, barcode: str, image_url: str) -> str:
     products = fresh_table("produtos")
     matches = products.index[products["id_produto"].astype(str) == str(product_id)].tolist()
     if not matches:
@@ -100,7 +100,7 @@ def edit_product(product_id: str, name: str, category_id: str, size_id: str, col
     sku = build_product_sku(product_id, category_id, size_id, color_id, material_id, kit_id)
     if not unique(others["sku"], sku):
         raise ValueError("A edicao geraria um SKU que ja existe.")
-    row = _product_row(product_id, name, category_id, size_id, color_id, material_id, price, cost, kit_id, barcode, sku)
+    row = _product_row(product_id, name, category_id, size_id, color_id, material_id, price, cost, kit_id, barcode, image_url, sku)
     update_row("PRODUTOS", index + 2, row)
     return sku
 
@@ -133,4 +133,4 @@ def catalog() -> pd.DataFrame:
     result["Custo"] = pd.to_numeric(result["custo"], errors="coerce").fillna(0) / 100
     result["Lucro"] = result["Preco"] - result["Custo"]
     result["Margem %"] = result.apply(lambda row: row["Lucro"] / row["Preco"] * 100 if row["Preco"] else 0, axis=1)
-    return result[["id_produto", "nome_produto", "Categoria", "Tamanho", "Cor", "Material", "Kit", "sku", "codigo_barras", "Preco", "Custo", "Lucro", "Margem %"]]
+    return result[["id_produto", "nome_produto", "Categoria", "Tamanho", "Cor", "Material", "Kit", "sku", "codigo_barras", "imagem_url", "Preco", "Custo", "Lucro", "Margem %"]]

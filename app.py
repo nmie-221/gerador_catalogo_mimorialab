@@ -123,16 +123,17 @@ def product_form(values: dict | None = None, form_key: str = "new_product") -> t
         price = st.number_input("Preço", min_value=0.0, value=float(values.get("preco", 0) or 0), step=0.01, key=f"{form_key}_price")
         cost = st.number_input("Custo", min_value=0.0, value=float(values.get("custo", 0) or 0), step=0.01, key=f"{form_key}_cost")
         barcode = st.text_input("Código de barras (opcional)", value=str(values.get("codigo_barras", "")))
+        image_url = st.text_input("URL da imagem (opcional)", value=str(values.get("imagem_url", "")))
         submitted = st.form_submit_button("Salvar")
-    return submitted, name, category, size, color, material, price, cost, kit, barcode
+    return submitted, name, category, size, color, material, price, cost, kit, barcode, image_url
 
 
 def register_page() -> None:
     st.title("📝 Cadastrar produto")
     st.caption("✨ O SKU é gerado automaticamente por categoria, tamanho, cor, kit e material.")
-    submitted, name, category, size, color, material, price, cost, kit, barcode = product_form()
+    submitted, name, category, size, color, material, price, cost, kit, barcode, image_url = product_form()
     if submitted and all([category, size, color, material, kit]):
-        result = run(lambda: add_product(name, category, size, color, material, price, cost, kit, barcode))
+        result = run(lambda: add_product(name, category, size, color, material, price, cost, kit, barcode, image_url))
         if result is not False:
             st.success(f"Produto cadastrado. SKU: {result}")
             st.rerun()
@@ -170,6 +171,7 @@ def query_page() -> None:
             "Custo": st.column_config.NumberColumn("Custo", format="R$ %.2f"),
             "Lucro": st.column_config.NumberColumn("Lucro", format="R$ %.2f"),
             "Margem %": st.column_config.NumberColumn("Margem %", format="%.2f%%"),
+            "imagem_url": st.column_config.ImageColumn("Imagem", help="Imagem cadastrada pela URL"),
         },
     )
 
@@ -186,9 +188,9 @@ def manage_page() -> None:
         selected_label = st.selectbox("Produto para editar", list(options), key="edit_selected_product")
         selected_id = options[selected_label]
         selected = products[products["id_produto"].astype(str) == str(selected_id)].iloc[0].to_dict()
-        submitted, name, category, size, color, material, price, cost, kit, barcode = product_form(selected, "edit_product")
+        submitted, name, category, size, color, material, price, cost, kit, barcode, image_url = product_form(selected, "edit_product")
         if submitted and all([category, size, color, material, kit]):
-            result = run(lambda: edit_product(selected_id, name, category, size, color, material, price, cost, kit, barcode))
+            result = run(lambda: edit_product(selected_id, name, category, size, color, material, price, cost, kit, barcode, image_url))
             if result is not False:
                 st.success(f"Produto atualizado. SKU: {result}")
                 st.rerun()
