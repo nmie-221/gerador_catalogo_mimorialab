@@ -107,7 +107,7 @@ def append_rows(name: str, rows: Iterable[Iterable[Any]]) -> None:
     if not values:
         return
     try:
-        _worksheet(name).append_rows(values, value_input_option="USER_ENTERED")
+        _worksheet(name).append_rows(values, value_input_option="RAW")
     except Exception as exc:
         raise SheetsError(f"Nao foi possivel inserir dados na aba '{name}'.") from exc
     invalidate_cache()
@@ -117,7 +117,7 @@ def update_row(name: str, row_number: int, values: Iterable[Any]) -> None:
     row_values = list(values)
     try:
         worksheet = _worksheet(name)
-        worksheet.update(f"A{row_number}:{chr(64 + len(row_values))}{row_number}", [row_values])
+        worksheet.update(f"A{row_number}:{chr(64 + len(row_values))}{row_number}", [row_values], value_input_option="RAW")
     except Exception as exc:
         raise SheetsError(f"Nao foi possivel atualizar a aba '{name}'.") from exc
     invalidate_cache()

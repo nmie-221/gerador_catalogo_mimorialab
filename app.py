@@ -8,6 +8,7 @@ import streamlit as st
 from repositories.data import active, add_domain, add_product, catalog, delete_product, edit_product, table
 from services.auth import is_authenticated, login_screen, logout
 from services.google_sheets import SheetsError
+from utils.validators import number, required_fields
 
 st.set_page_config(page_title="Catálogo de Produtos", page_icon="📦", layout="wide")
 st.markdown(
@@ -110,30 +111,98 @@ def domain_select(frame: pd.DataFrame, label: str, key: str, selected_id: str | 
     return options[selected]
 
 
-def product_form(values: dict | None = None, form_key: str = "new_product") -> tuple:
+def product_form(values: dict | None = None, form_key: str = "new_product", before_pricing=None) -> tuple:
     values = values or {}
+    def decimal_text(value: object) -> str:
+        try:
+            return f"{float(str(value or 0).replace(',', '.')):.2f}"
+        except ValueError:
+            return "0.00"
+
     categories, sizes, colors, materials, kits = (active(kind) for kind in ("categorias", "tamanhos", "cores", "materiais", "kits"))
-    with st.form(form_key):
-        name = st.text_input("Nome do produto", value=str(values.get("nome_produto", "")))
+    if before_pricing:
+        characteristics_tab, simulation_tab, pricing_tab = st.tabs(["Características", "Simulação", "Preço e dados finais"])
+    else:
+        characteristics_tab = simulation_tab = pricing_tab = st.container()
+
+    with characteristics_tab:
+        st.subheader("Características do produto")
+        name = st.text_input("Nome do produto", value=str(values.get("nome_produto", "")), key=f"{form_key}_name")
         category = domain_select(categories, "Categoria", f"{form_key}_category", values.get("categoria"))
         size = domain_select(sizes, "Tamanho", f"{form_key}_size", values.get("tamanho"))
         color = domain_select(colors, "Cor/tema", f"{form_key}_color", values.get("cor"))
         material = domain_select(materials, "Material", f"{form_key}_material", values.get("material"))
         kit = domain_select(kits, "Kit", f"{form_key}_kit", values.get("qtd_kit"))
-        price = st.number_input("Preço", min_value=0.0, value=float(values.get("preco", 0) or 0), step=0.01, key=f"{form_key}_price")
-        cost = st.number_input("Custo", min_value=0.0, value=float(values.get("custo", 0) or 0), step=0.01, key=f"{form_key}_cost")
-        barcode = st.text_input("Código de barras (opcional)", value=str(values.get("codigo_barras", "")))
-        image_url = st.text_input("URL da imagem (opcional)", value=str(values.get("imagem_url", "")))
-        submitted = st.form_submit_button("Salvar")
+    with simulation_tab:
+        if before_pricing:
+            before_pricing()
+    with pricing_tab:
+        st.subheader("Preço e dados finais")
+        with st.form(form_key):
+            st.caption("Informe valores decimais usando ponto, por exemplo: 7.63")
+            price = st.text_input("Preço", value=decimal_text(values.get("preco", st.session_state.get(f"{form_key}_price", 0))), key=f"{form_key}_price")
+            cost = st.text_input("Custo", value=decimal_text(values.get("custo", st.session_state.get(f"{form_key}_cost", 0))), key=f"{form_key}_cost")
+            barcode = st.text_input("Código de barras (opcional)", value=str(values.get("codigo_barras", "")))
+            image_url = st.text_input("URL da imagem (opcional)", value=str(values.get("imagem_url", "")))
+            submitted = st.form_submit_button("Salvar")
     return submitted, name, category, size, color, material, price, cost, kit, barcode, image_url
+
+
+def marketplace_simulator() -> None:
+    simulation_fields = st.columns(4)
+    cost_text = simulation_fields[0].text_input("Custo (R$)", value="0.00", key="new_marketplace_cost")
+    margin_text = simulation_fields[1].text_input("Margem de lucro (%)", value="30.00", key="new_marketplace_margin")
+    mercado_livre_fee_text = simulation_fields[2].text_input("Taxa Mercado Livre (%)", value="20.00", key="new_mercado_livre_fee")
+    shopee_fee_text = simulation_fields[3].text_input("Taxa Shopee (%)", value="14.00", key="new_shopee_fee")
+
+    def parse_simulation_value(value: str) -> float:
+        try:
+            parsed = float(value)
+            return max(parsed, 0.0)
+        except ValueError:
+            return 0.0
+
+    cost = parse_simulation_value(cost_text)
+    profit_margin = parse_simulation_value(margin_text)
+    mercado_livre_fee = min(parse_simulation_value(mercado_livre_fee_text), 99.99)
+    shopee_fee = min(parse_simulation_value(shopee_fee_text), 99.99)
+    base_price = cost * (1 + profit_margin / 100)
+    mercado_livre_price = base_price / (1 - mercado_livre_fee / 100)
+    shopee_price = base_price / (1 - shopee_fee / 100)
+    result_columns = st.columns(2)
+    result_columns[0].metric("Preço sugerido Mercado Livre", f"R$ {mercado_livre_price:.2f}")
+    result_columns[1].metric("Preço sugerido Shopee", f"R$ {shopee_price:.2f}")
+    action_columns = st.columns(2)
+    if action_columns[0].button("Usar preço Mercado Livre", key="use_mercado_livre_price", use_container_width=True):
+        st.session_state["new_product_price"] = f"{mercado_livre_price:.2f}"
+        st.session_state["new_product_cost"] = f"{cost:.2f}"
+        st.rerun()
+    if action_columns[1].button("Usar preço Shopee", key="use_shopee_price", use_container_width=True):
+        st.session_state["new_product_price"] = f"{shopee_price:.2f}"
+        st.session_state["new_product_cost"] = f"{cost:.2f}"
+        st.rerun()
+    st.caption("Use um dos valores sugeridos no campo Preço abaixo, se desejar.")
 
 
 def register_page() -> None:
     st.title("📝 Cadastrar produto")
     st.caption("✨ O SKU é gerado automaticamente por categoria, tamanho, cor, kit e material.")
-    submitted, name, category, size, color, material, price, cost, kit, barcode, image_url = product_form()
-    if submitted and all([category, size, color, material, kit]):
-        result = run(lambda: add_product(name, category, size, color, material, price, cost, kit, barcode, image_url))
+    submitted, name, category, size, color, material, price, cost, kit, barcode, image_url = product_form(before_pricing=marketplace_simulator)
+    if submitted:
+        missing = required_fields({
+            "Nome do produto": name,
+            "Categoria": category,
+            "Tamanho": size,
+            "Cor/tema": color,
+            "Material": material,
+            "Kit": kit,
+            "Preço": price,
+            "Custo": cost,
+        })
+        if missing:
+            st.error(f"Preencha os campos obrigatórios: {', '.join(missing)}.")
+            return
+        result = run(lambda: add_product(name, category, size, color, material, number(price, "O preco"), number(cost, "O custo"), kit, barcode, image_url))
         if result is not False:
             st.success(f"Produto cadastrado. SKU: {result}")
             st.rerun()
@@ -189,8 +258,21 @@ def manage_page() -> None:
         selected_id = options[selected_label]
         selected = products[products["id_produto"].astype(str) == str(selected_id)].iloc[0].to_dict()
         submitted, name, category, size, color, material, price, cost, kit, barcode, image_url = product_form(selected, "edit_product")
-        if submitted and all([category, size, color, material, kit]):
-            result = run(lambda: edit_product(selected_id, name, category, size, color, material, price, cost, kit, barcode, image_url))
+        if submitted:
+            missing = required_fields({
+                "Nome do produto": name,
+                "Categoria": category,
+                "Tamanho": size,
+                "Cor/tema": color,
+                "Material": material,
+                "Kit": kit,
+                "Preço": price,
+                "Custo": cost,
+            })
+            if missing:
+                st.error(f"Preencha os campos obrigatórios: {', '.join(missing)}.")
+                return
+            result = run(lambda: edit_product(selected_id, name, category, size, color, material, number(price, "O preco"), number(cost, "O custo"), kit, barcode, image_url))
             if result is not False:
                 st.success(f"Produto atualizado. SKU: {result}")
                 st.rerun()

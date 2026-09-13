@@ -66,6 +66,23 @@ def _product_row(product_id: str, name: str, category_id: str, size_id: str, col
     return [product_id, clean(name), category_id, size_id, color_id, material_id, number(price, "O preco"), number(cost, "O custo"), kit_id, sku, barcode, clean(image_url)]
 
 
+def _money_series(values: pd.Series) -> pd.Series:
+    def parse(value: object) -> float:
+        text = str(value or "").strip()
+        if "," in text:
+            text = text.replace(".", "").replace(",", ".")
+        try:
+            parsed = float(text)
+            # Registros antigos foram salvos como centavos inteiros (ex.: 1344).
+            if parsed.is_integer() and abs(parsed) >= 100:
+                return parsed / 100
+            return parsed
+        except ValueError:
+            return 0.0
+
+    return values.map(parse).astype("float64")
+
+
 def add_product(name: str, category_id: str, size_id: str, color_id: str, material_id: str, price: float, cost: float, kit_id: str, barcode: str, image_url: str) -> str:
     products = fresh_table("produtos")
     name = required(name, "o nome do produto")
@@ -129,8 +146,8 @@ def catalog() -> pd.DataFrame:
     result["Cor"] = result["cor"].map(colors)
     result["Material"] = result["material"].map(materials)
     result["Kit"] = result["qtd_kit"].map(kits)
-    result["Preco"] = pd.to_numeric(result["preco"], errors="coerce").fillna(0) / 100
-    result["Custo"] = pd.to_numeric(result["custo"], errors="coerce").fillna(0) / 100
+    result["Preco"] = _money_series(result["preco"])
+    result["Custo"] = _money_series(result["custo"])
     result["Lucro"] = result["Preco"] - result["Custo"]
     result["Margem %"] = result.apply(lambda row: row["Lucro"] / row["Preco"] * 100 if row["Preco"] else 0, axis=1)
     return result[["id_produto", "nome_produto", "Categoria", "Tamanho", "Cor", "Material", "Kit", "sku", "codigo_barras", "imagem_url", "Preco", "Custo", "Lucro", "Margem %"]]

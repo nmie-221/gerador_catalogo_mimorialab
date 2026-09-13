@@ -19,6 +19,10 @@ def required(value: object, label: str) -> str:
     return result
 
 
+def required_fields(fields: dict[str, object]) -> list[str]:
+    return [label for label, value in fields.items() if not clean(value)]
+
+
 def unique(values: Iterable[object], candidate: object) -> bool:
     target = normalize(candidate)
     return not any(normalize(value) == target for value in values)
