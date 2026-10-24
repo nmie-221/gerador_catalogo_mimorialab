@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from base64 import b64encode
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
 from repositories.data import active, add_domain, add_product, catalog, delete_domain, delete_product, edit_domain, edit_product, table
-from services.auth import is_authenticated, login_screen, logout
+from services.auth import is_authenticated, login_screen
 from services.google_sheets import SheetsError
 from utils.validators import number, required_fields
 
@@ -365,13 +366,18 @@ if not is_authenticated():
     login_screen()
     st.stop()
 
-with st.container(border=True):
-    logo_path = Path(__file__).parent / "assets" / "logo.png"
-    if logo_path.exists():
-        st.image(str(logo_path), width=40)
-    else:
-        st.subheader("📦 Catálogo MimoriaLab")
-    st.button("🚪 Sair", on_click=logout, key="logout")
+logo_path = Path(__file__).parent / "assets" / "logo.png"
+logo_html = ""
+if logo_path.exists():
+    logo_data = b64encode(logo_path.read_bytes()).decode("ascii")
+    logo_html = f'<img src="data:image/png;base64,{logo_data}" alt="MimoriaLab" style="width:40px;height:auto;">'
+st.markdown(
+    '<header style="display:grid;grid-template-columns:40px minmax(0,1fr) 40px;align-items:center;gap:8px;">'
+    f'<span>{logo_html}</span>'
+    '<h2 style="text-align:center;font-size:clamp(1rem,4vw,1.5rem);margin:0;padding:0;">Controle MimoriaLab</h2>'
+    '<span aria-hidden="true"></span></header>',
+    unsafe_allow_html=True,
+)
 
 navigation_pages = ["🔎 Consultar Produtos", "📝 Cadastrar produto", "⚙️ Editar ou excluir", "🧩 Catálogos auxiliares"]
 if st.session_state.get("page") == "Dashboard":
