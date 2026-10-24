@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from repositories.data import active, add_domain, add_product, catalog, delete_product, edit_product, table
+from repositories.data import active, add_domain, add_product, catalog, delete_domain, delete_product, edit_domain, edit_product, table
 from services.auth import is_authenticated, login_screen, logout
 from services.google_sheets import SheetsError
 from utils.validators import number, required_fields
@@ -310,6 +310,9 @@ def auxiliary_page() -> None:
     tabs = st.tabs([label for label, _ in definitions])
     for tab, (label, kind) in zip(tabs, definitions):
         with tab:
+            notice = st.session_state.pop(f"notice_{kind}", None)
+            if notice:
+                st.success(notice)
             with st.form(f"new_{kind}"):
                 name = st.text_input("Nome", key=f"{kind}_name")
                 abbrev = st.text_input("Abreviação", key=f"{kind}_abbrev")
@@ -319,7 +322,39 @@ def auxiliary_page() -> None:
                 if run(lambda: add_domain(kind, name, abbrev, enabled)) is not False:
                     st.success(f"{label} cadastrado.")
                     st.rerun()
-            st.dataframe(table(kind), use_container_width=True, hide_index=True)
+            frame = table(kind)
+            st.dataframe(frame, use_container_width=True, hide_index=True)
+            if frame.empty:
+                st.info("Cadastre um item para poder editar ou excluir.")
+                continue
+            with st.expander("✏️ Alterar ou excluir um item"):
+                identifier = st.selectbox(
+                    "Selecione o item", frame["id"].astype(str).tolist(),
+                    format_func=lambda value, data=frame: f"{data.loc[data['id'].astype(str) == value, 'nome'].iloc[0]} ({value})",
+                    key=f"{kind}_selected",
+                )
+                selected = frame.loc[frame["id"].astype(str) == identifier].iloc[0]
+                item_key = f"{kind}_{identifier}"
+                st.caption("Itens vinculados a produtos podem ser desativados. A abreviação desses itens é preservada para manter os SKUs existentes.")
+                with st.form(f"edit_{item_key}"):
+                    edited_name = st.text_input("Nome", value=str(selected["nome"]), key=f"edit_name_{item_key}")
+                    edited_abbrev = st.text_input("Abreviação", value=str(selected["abreviacao"]), key=f"edit_abbrev_{item_key}")
+                    edited_enabled = st.checkbox("Ativo", value=str(selected["ativo"]).casefold() in ["sim", "true", "1"], key=f"edit_active_{item_key}")
+                    save = st.form_submit_button("Salvar alterações")
+                if save:
+                    if run(lambda: edit_domain(kind, identifier, edited_name, edited_abbrev, edited_enabled)) is not False:
+                        st.session_state[f"notice_{kind}"] = "Item atualizado."
+                        st.rerun()
+                st.warning(f"Excluir remove permanentemente o item {selected['nome']} ({identifier}).")
+                with st.form(f"delete_{item_key}"):
+                    confirmed = st.checkbox("Confirmo a exclusão deste item", key=f"confirm_{item_key}")
+                    remove = st.form_submit_button("Excluir item")
+                if remove:
+                    if not confirmed:
+                        st.error("Confirme a exclusão antes de continuar.")
+                    elif run(lambda: delete_domain(kind, identifier)) is not False:
+                        st.session_state[f"notice_{kind}"] = "Item excluído."
+                        st.rerun()
 
 
 def dashboard() -> None:
@@ -333,7 +368,7 @@ if not is_authenticated():
 with st.container(border=True):
     logo_path = Path(__file__).parent / "assets" / "logo.png"
     if logo_path.exists():
-        st.image(str(logo_path), width=140)
+        st.image(str(logo_path), width=90)
     else:
         st.subheader("📦 Catálogo MimoriaLab")
     st.button("🚪 Sair", on_click=logout, key="logout")
