@@ -91,7 +91,9 @@ def _worksheet(name: str) -> gspread.Worksheet:
 def read_sheet(name: str) -> pd.DataFrame:
     worksheet = _worksheet(name)
     try:
-        values = worksheet.get_all_records()
+        # Read numeric cells independently of the spreadsheet's display locale.
+        # Keep text (including barcodes with leading zeroes) unchanged.
+        values = worksheet.get_all_records(value_render_option="UNFORMATTED_VALUE", numericise_ignore=["all"])
     except Exception as exc:
         raise SheetsError(f"Nao foi possivel ler a aba '{name}'.") from exc
     return pd.DataFrame(values, columns=HEADERS.get(name, None))

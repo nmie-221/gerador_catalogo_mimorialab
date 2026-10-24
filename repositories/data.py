@@ -108,15 +108,8 @@ def _product_row(product_id: str, name: str, category_id: str, size_id: str, col
 
 def _money_series(values: pd.Series) -> pd.Series:
     def parse(value: object) -> float:
-        text = str(value or "").strip()
-        if "," in text:
-            text = text.replace(".", "").replace(",", ".")
         try:
-            parsed = float(text)
-            # Registros antigos foram salvos como centavos inteiros (ex.: 1344).
-            if parsed.is_integer() and abs(parsed) >= 100:
-                return parsed / 100
-            return parsed
+            return number(value or 0, "O valor")
         except ValueError:
             return 0.0
 

@@ -129,7 +129,7 @@ def product_form(values: dict | None = None, form_key: str = "new_product", befo
     values = values or {}
     def decimal_text(value: object) -> str:
         try:
-            return f"{float(str(value or 0).replace(',', '.')):.2f}"
+            return f"{number(value or 0, 'O valor'):.2f}"
         except ValueError:
             return "0.00"
 
@@ -153,7 +153,7 @@ def product_form(values: dict | None = None, form_key: str = "new_product", befo
     with pricing_tab:
         st.subheader("Preço e dados finais")
         with st.form(form_key):
-            st.caption("Informe valores decimais usando ponto, por exemplo: 7.63")
+            st.caption("Informe os valores em reais, por exemplo: 7,63 ou 7.63.")
             price = st.text_input("Preço", value=decimal_text(values.get("preco", st.session_state.get(f"{form_key}_price", 0))), key=f"{form_key}_price")
             cost = st.text_input("Custo", value=decimal_text(values.get("custo", st.session_state.get(f"{form_key}_cost", 0))), key=f"{form_key}_cost")
             barcode = st.text_input("Código de barras (opcional)", value=str(values.get("codigo_barras", "")))
@@ -271,7 +271,7 @@ def manage_page() -> None:
         selected_label = st.selectbox("Produto para editar", list(options), key="edit_selected_product")
         selected_id = options[selected_label]
         selected = products[products["id_produto"].astype(str) == str(selected_id)].iloc[0].to_dict()
-        submitted, name, category, size, color, material, price, cost, kit, barcode, image_url = product_form(selected, "edit_product")
+        submitted, name, category, size, color, material, price, cost, kit, barcode, image_url = product_form(selected, f"edit_product_{selected_id}")
         if submitted:
             missing = required_fields({
                 "Nome do produto": name,

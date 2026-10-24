@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import math
 from typing import Iterable
 
 
@@ -37,9 +38,15 @@ def abbreviation(value: object) -> str:
 
 def number(value: object, label: str, minimum: float = 0) -> float:
     try:
+        if isinstance(value, str):
+            value = value.strip()
+            if "," in value:
+                value = value.replace(".", "").replace(",", ".")
         result = float(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{label} deve ser numerico.") from exc
+    if not math.isfinite(result):
+        raise ValueError(f"{label} deve ser um numero finito.")
     if result < minimum:
         raise ValueError(f"{label} nao pode ser negativo.")
     return result
