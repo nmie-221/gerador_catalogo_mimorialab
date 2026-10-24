@@ -71,18 +71,31 @@ st.markdown(
         color: var(--brand-purple-light) !important;
         background-color: transparent !important;
     }
-    [data-testid="stSidebar"] button[aria-pressed="true"] {
-        background-color: var(--brand-purple) !important;
-        color: white !important;
-    }
     a, [data-testid="stMetricValue"] {
         color: var(--brand-purple-light) !important;
     }
     [data-testid="stProgressBar"] > div > div {
         background-color: var(--brand-purple) !important;
     }
-    [data-testid="stSidebar"] {
-        border-right: 1px solid var(--brand-purple);
+    @media (max-width: 640px) {
+        .stMainBlockContainer, .block-container {
+            padding-left: 1rem;
+            padding-right: 1rem;
+            padding-top: 2rem;
+        }
+        h1 {
+            font-size: 1.75rem !important;
+        }
+        .stButton > button, .stFormSubmitButton > button {
+            min-height: 2.75rem;
+        }
+        [data-baseweb="tab-list"] {
+            gap: 1rem;
+            overflow-x: auto;
+        }
+        [data-baseweb="tab"] {
+            flex-shrink: 0;
+        }
     }
     </style>
     """,
@@ -317,23 +330,20 @@ if not is_authenticated():
     login_screen()
     st.stop()
 
-logo_path = Path(__file__).parent / "assets" / "logo.png"
-if logo_path.exists():
-    st.sidebar.image(str(logo_path), use_container_width=True)
-else:
-    st.sidebar.title("📦 Catálogo")
-st.sidebar.subheader("🧭 Navegação")
+with st.container(border=True):
+    logo_path = Path(__file__).parent / "assets" / "logo.png"
+    if logo_path.exists():
+        st.image(str(logo_path), width=140)
+    else:
+        st.subheader("📦 Catálogo MimoriaLab")
+    st.button("🚪 Sair", on_click=logout, key="logout")
+
 navigation_pages = ["🔎 Consultar Produtos", "📝 Cadastrar produto", "⚙️ Editar ou excluir", "🧩 Catálogos auxiliares"]
 if st.session_state.get("page") == "Dashboard":
     st.session_state.page = "🔎 Consultar Produtos"
 if st.session_state.get("page") not in navigation_pages:
     st.session_state.page = "🔎 Consultar Produtos"
-for navigation_page in navigation_pages:
-    if st.sidebar.button(navigation_page, use_container_width=True, type="primary" if st.session_state.page == navigation_page else "secondary"):
-        st.session_state.page = navigation_page
-        st.rerun()
-st.sidebar.divider()
-st.sidebar.button("🚪 Sair", on_click=logout, use_container_width=True)
+st.selectbox("O que você quer fazer?", navigation_pages, key="page")
 page = st.session_state.page
 try:
     {
