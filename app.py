@@ -368,7 +368,7 @@ if not is_authenticated():
 with st.container(border=True):
     logo_path = Path(__file__).parent / "assets" / "logo.png"
     if logo_path.exists():
-        st.image(str(logo_path), width=90)
+        st.image(str(logo_path), width=40)
     else:
         st.subheader("📦 Catálogo MimoriaLab")
     st.button("🚪 Sair", on_click=logout, key="logout")
