@@ -372,7 +372,8 @@ if logo_path.exists():
     logo_data = b64encode(logo_path.read_bytes()).decode("ascii")
     logo_html = f'<img src="data:image/png;base64,{logo_data}" alt="MimoriaLab" style="width:40px;height:auto;">'
 st.markdown(
-    '<header style="display:grid;grid-template-columns:40px minmax(0,1fr) 40px;align-items:center;gap:8px;">'
+    '<header style="display:grid;grid-template-columns:40px minmax(0,1fr) 40px;align-items:center;gap:8px;'
+    'min-height:88px;padding:16px 0;margin-bottom:32px;box-sizing:border-box;">'
     f'<span>{logo_html}</span>'
     '<h2 style="text-align:center;font-size:clamp(1rem,4vw,1.5rem);margin:0;padding:0;">Controle MimoriaLab</h2>'
     '<span aria-hidden="true"></span></header>',
