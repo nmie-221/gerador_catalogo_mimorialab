@@ -1,0 +1,61 @@
+name: Infra AWS de desenvolvimento
+
+on:
+  workflow_dispatch:
+    inputs:
+      executar_apply:
+        description: "Criar ou atualizar os recursos na AWS?"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: mimorialab-infra-dev
+  cancel-in-progress: false
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    environment: aws-dev
+
+    defaults:
+      run:
+        working-directory: infra
+
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v4
+
+      - name: Autenticar na AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Instalar Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.10.5"
+
+      - name: Preparar Terraform
+        run: terraform init -input=false
+
+      - name: Conferir formatação
+        run: terraform fmt -check
+
+      - name: Validar configuração
+        run: terraform validate
+
+      - name: Planejar alterações
+        run: terraform plan -input=false -out=change.tfplan
+
+      - name: Aplicar alterações
+        if: ${{ inputs.executar_apply }}
+        run: terraform apply -input=false change.tfplan
+
+      - name: Mostrar lockfile
+        run: cat .terraform.lock.hcl

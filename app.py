@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from base64 import b64encode
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
-from repositories.data import active, add_domain, add_product, catalog, delete_product, edit_product, table
-from services.auth import is_authenticated, login_screen, logout
+from repositories.data import active, add_domain, add_product, catalog, delete_domain, delete_product, edit_domain, edit_product, table
+from services.auth import is_authenticated, login_screen
 from services.google_sheets import SheetsError
 from utils.validators import number, required_fields
 
@@ -71,18 +72,31 @@ st.markdown(
         color: var(--brand-purple-light) !important;
         background-color: transparent !important;
     }
-    [data-testid="stSidebar"] button[aria-pressed="true"] {
-        background-color: var(--brand-purple) !important;
-        color: white !important;
-    }
     a, [data-testid="stMetricValue"] {
         color: var(--brand-purple-light) !important;
     }
     [data-testid="stProgressBar"] > div > div {
         background-color: var(--brand-purple) !important;
     }
-    [data-testid="stSidebar"] {
-        border-right: 1px solid var(--brand-purple);
+    @media (max-width: 640px) {
+        .stMainBlockContainer, .block-container {
+            padding-left: 1rem;
+            padding-right: 1rem;
+            padding-top: 2rem;
+        }
+        h1 {
+            font-size: 1.75rem !important;
+        }
+        .stButton > button, .stFormSubmitButton > button {
+            min-height: 2.75rem;
+        }
+        [data-baseweb="tab-list"] {
+            gap: 1rem;
+            overflow-x: auto;
+        }
+        [data-baseweb="tab"] {
+            flex-shrink: 0;
+        }
     }
     </style>
     """,
@@ -115,7 +129,7 @@ def product_form(values: dict | None = None, form_key: str = "new_product", befo
     values = values or {}
     def decimal_text(value: object) -> str:
         try:
-            return f"{float(str(value or 0).replace(',', '.')):.2f}"
+            return f"{number(value or 0, 'O valor'):.2f}"
         except ValueError:
             return "0.00"
 
@@ -139,7 +153,7 @@ def product_form(values: dict | None = None, form_key: str = "new_product", befo
     with pricing_tab:
         st.subheader("Preço e dados finais")
         with st.form(form_key):
-            st.caption("Informe valores decimais usando ponto, por exemplo: 7.63")
+            st.caption("Informe os valores em reais, por exemplo: 7,63 ou 7.63.")
             price = st.text_input("Preço", value=decimal_text(values.get("preco", st.session_state.get(f"{form_key}_price", 0))), key=f"{form_key}_price")
             cost = st.text_input("Custo", value=decimal_text(values.get("custo", st.session_state.get(f"{form_key}_cost", 0))), key=f"{form_key}_cost")
             barcode = st.text_input("Código de barras (opcional)", value=str(values.get("codigo_barras", "")))
@@ -257,7 +271,7 @@ def manage_page() -> None:
         selected_label = st.selectbox("Produto para editar", list(options), key="edit_selected_product")
         selected_id = options[selected_label]
         selected = products[products["id_produto"].astype(str) == str(selected_id)].iloc[0].to_dict()
-        submitted, name, category, size, color, material, price, cost, kit, barcode, image_url = product_form(selected, "edit_product")
+        submitted, name, category, size, color, material, price, cost, kit, barcode, image_url = product_form(selected, f"edit_product_{selected_id}")
         if submitted:
             missing = required_fields({
                 "Nome do produto": name,
@@ -297,6 +311,9 @@ def auxiliary_page() -> None:
     tabs = st.tabs([label for label, _ in definitions])
     for tab, (label, kind) in zip(tabs, definitions):
         with tab:
+            notice = st.session_state.pop(f"notice_{kind}", None)
+            if notice:
+                st.success(notice)
             with st.form(f"new_{kind}"):
                 name = st.text_input("Nome", key=f"{kind}_name")
                 abbrev = st.text_input("Abreviação", key=f"{kind}_abbrev")
@@ -306,7 +323,39 @@ def auxiliary_page() -> None:
                 if run(lambda: add_domain(kind, name, abbrev, enabled)) is not False:
                     st.success(f"{label} cadastrado.")
                     st.rerun()
-            st.dataframe(table(kind), use_container_width=True, hide_index=True)
+            frame = table(kind)
+            st.dataframe(frame, use_container_width=True, hide_index=True)
+            if frame.empty:
+                st.info("Cadastre um item para poder editar ou excluir.")
+                continue
+            with st.expander("✏️ Alterar ou excluir um item"):
+                identifier = st.selectbox(
+                    "Selecione o item", frame["id"].astype(str).tolist(),
+                    format_func=lambda value, data=frame: f"{data.loc[data['id'].astype(str) == value, 'nome'].iloc[0]} ({value})",
+                    key=f"{kind}_selected",
+                )
+                selected = frame.loc[frame["id"].astype(str) == identifier].iloc[0]
+                item_key = f"{kind}_{identifier}"
+                st.caption("Itens vinculados a produtos podem ser desativados. A abreviação desses itens é preservada para manter os SKUs existentes.")
+                with st.form(f"edit_{item_key}"):
+                    edited_name = st.text_input("Nome", value=str(selected["nome"]), key=f"edit_name_{item_key}")
+                    edited_abbrev = st.text_input("Abreviação", value=str(selected["abreviacao"]), key=f"edit_abbrev_{item_key}")
+                    edited_enabled = st.checkbox("Ativo", value=str(selected["ativo"]).casefold() in ["sim", "true", "1"], key=f"edit_active_{item_key}")
+                    save = st.form_submit_button("Salvar alterações")
+                if save:
+                    if run(lambda: edit_domain(kind, identifier, edited_name, edited_abbrev, edited_enabled)) is not False:
+                        st.session_state[f"notice_{kind}"] = "Item atualizado."
+                        st.rerun()
+                st.warning(f"Excluir remove permanentemente o item {selected['nome']} ({identifier}).")
+                with st.form(f"delete_{item_key}"):
+                    confirmed = st.checkbox("Confirmo a exclusão deste item", key=f"confirm_{item_key}")
+                    remove = st.form_submit_button("Excluir item")
+                if remove:
+                    if not confirmed:
+                        st.error("Confirme a exclusão antes de continuar.")
+                    elif run(lambda: delete_domain(kind, identifier)) is not False:
+                        st.session_state[f"notice_{kind}"] = "Item excluído."
+                        st.rerun()
 
 
 def dashboard() -> None:
@@ -318,22 +367,25 @@ if not is_authenticated():
     st.stop()
 
 logo_path = Path(__file__).parent / "assets" / "logo.png"
+logo_html = ""
 if logo_path.exists():
-    st.sidebar.image(str(logo_path), use_container_width=True)
-else:
-    st.sidebar.title("📦 Catálogo")
-st.sidebar.subheader("🧭 Navegação")
+    logo_data = b64encode(logo_path.read_bytes()).decode("ascii")
+    logo_html = f'<img src="data:image/png;base64,{logo_data}" alt="MimoriaLab" style="width:40px;height:auto;">'
+st.markdown(
+    '<header style="display:grid;grid-template-columns:40px minmax(0,1fr) 40px;align-items:center;gap:8px;'
+    'min-height:88px;padding:16px 0;margin-bottom:32px;box-sizing:border-box;">'
+    f'<span>{logo_html}</span>'
+    '<h2 style="text-align:center;font-size:clamp(1rem,4vw,1.5rem);margin:0;padding:0;">Controle MimoriaLab</h2>'
+    '<span aria-hidden="true"></span></header>',
+    unsafe_allow_html=True,
+)
+
 navigation_pages = ["🔎 Consultar Produtos", "📝 Cadastrar produto", "⚙️ Editar ou excluir", "🧩 Catálogos auxiliares"]
 if st.session_state.get("page") == "Dashboard":
     st.session_state.page = "🔎 Consultar Produtos"
 if st.session_state.get("page") not in navigation_pages:
     st.session_state.page = "🔎 Consultar Produtos"
-for navigation_page in navigation_pages:
-    if st.sidebar.button(navigation_page, use_container_width=True, type="primary" if st.session_state.page == navigation_page else "secondary"):
-        st.session_state.page = navigation_page
-        st.rerun()
-st.sidebar.divider()
-st.sidebar.button("🚪 Sair", on_click=logout, use_container_width=True)
+st.selectbox("O que você quer fazer?", navigation_pages, key="page")
 page = st.session_state.page
 try:
     {

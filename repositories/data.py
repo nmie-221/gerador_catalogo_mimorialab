@@ -4,7 +4,7 @@ from typing import Any
 
 import pandas as pd
 
-from services.google_sheets import SHEETS, append_rows, now_iso, read_sheet, update_row
+from services.google_sheets import SHEETS, append_rows, delete_row, now_iso, read_sheet, update_row
 from utils.sku import build_sku
 from utils.validators import abbreviation, clean, normalize, number, required, unique
 
@@ -53,6 +53,46 @@ def _lookup(kind: str, identifier: str) -> pd.Series:
     return matches.iloc[0]
 
 
+DOMAIN_PRODUCT_FIELDS = {
+    "categorias": "categoria", "tamanhos": "tamanho", "cores": "cor",
+    "materiais": "material", "kits": "qtd_kit",
+}
+
+
+def domain_in_use(kind: str, identifier: str) -> bool:
+    products = fresh_table("produtos")
+    return products[DOMAIN_PRODUCT_FIELDS[kind]].astype(str).eq(str(identifier)).any()
+
+
+def _domain_record(kind: str, identifier: str) -> tuple[pd.DataFrame, int]:
+    if kind not in DOMAIN_PRODUCT_FIELDS:
+        raise ValueError("Cadastro auxiliar inválido.")
+    frame = fresh_table(kind)
+    matches = [i for i, value in enumerate(frame["id"]) if str(value) == str(identifier)]
+    if len(matches) != 1:
+        raise ValueError("Registro não encontrado ou ID duplicado. Atualize a página.")
+    return frame, matches[0]
+
+
+def edit_domain(kind: str, identifier: str, name: str, abbrev: str, enabled: bool) -> None:
+    frame, position = _domain_record(kind, identifier)
+    name = required(name, "o nome")
+    abbrev = abbreviation(required(abbrev, "a abreviacao"))
+    others = frame.iloc[[i for i in range(len(frame)) if i != position]]
+    if not unique(others["nome"], name) or not unique(others["abreviacao"], abbrev):
+        raise ValueError("Nome e abreviacao devem ser unicos dentro do cadastro.")
+    if abbrev != str(frame.iloc[position]["abreviacao"]) and domain_in_use(kind, identifier):
+        raise ValueError("A abreviação está vinculada a produtos e não pode ser alterada para preservar os SKUs existentes.")
+    update_row(SHEETS[kind], position + 2, [identifier, name, abbrev, "Sim" if enabled else "Nao"])
+
+
+def delete_domain(kind: str, identifier: str) -> None:
+    _, position = _domain_record(kind, identifier)
+    if domain_in_use(kind, identifier):
+        raise ValueError("Este item está vinculado a produtos. Desative-o na edição em vez de excluir.")
+    delete_row(SHEETS[kind], position + 2)
+
+
 def build_product_sku(product_id: str, category_id: str, size_id: str, color_id: str, material_id: str, kit_id: str) -> str:
     category = _lookup("categorias", category_id)
     size = _lookup("tamanhos", size_id)
@@ -68,15 +108,8 @@ def _product_row(product_id: str, name: str, category_id: str, size_id: str, col
 
 def _money_series(values: pd.Series) -> pd.Series:
     def parse(value: object) -> float:
-        text = str(value or "").strip()
-        if "," in text:
-            text = text.replace(".", "").replace(",", ".")
         try:
-            parsed = float(text)
-            # Registros antigos foram salvos como centavos inteiros (ex.: 1344).
-            if parsed.is_integer() and abs(parsed) >= 100:
-                return parsed / 100
-            return parsed
+            return number(value or 0, "O valor")
         except ValueError:
             return 0.0
 
