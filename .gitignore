@@ -216,3 +216,13 @@ __marimo__/
 
 #Streamlit
 .secrets.toml
+
+# Arquivos locais do Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+
+# Segredos locais da aplicação
+.streamlit/secrets.toml
