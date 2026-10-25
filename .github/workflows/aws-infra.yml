@@ -13,10 +13,6 @@ permissions:
   contents: read
   id-token: write
 
-concurrency:
-  group: mimorialab-infra-dev
-  cancel-in-progress: false
-
 jobs:
   terraform:
     runs-on: ubuntu-latest
