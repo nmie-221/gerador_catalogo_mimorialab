@@ -126,6 +126,16 @@ class ProductionTests(unittest.TestCase):
                 nav = {'🏠 Início':'Início','📦 Matérias-primas e estoque':'Matérias-primas','⏱️ Custos de produção':'Custos de produção','🧾 Ficha e preço':'Ficha e preço','🧩 Catálogos auxiliares':'Cadastros','🔎 Consultar Produtos':'Produtos'}
                 next(w for w in app.get('button_group') if w.key == 'main_navigation').set_value(nav[page]).run(timeout=20)
                 self.assertFalse(app.exception, page)
+            next(w for w in app.get('button_group') if w.key == 'main_navigation').set_value('Custos de produção').run()
+            next(n for n in app.number_input if n.label == 'Valor da hora (R$)').set_value(25.)
+            next(b for b in app.button if b.label == 'Salvar valor da hora').click().run()
+            self.assertFalse(app.exception)
+            self.assertEqual(app.session_state['page'], '⏱️ Custos de produção')
+            self.assertEqual(repo.hourly(repo.settings()), 25)
+            self.assertTrue(any('Valor da hora salvo' in s.value for s in app.success))
+            app.run()
+            self.assertEqual(app.session_state['page'], '⏱️ Custos de produção')
+            self.assertEqual(next(n for n in app.number_input if n.label == 'Valor da hora (R$)').value, 25.)
             next(w for w in app.get('button_group') if w.key == 'main_navigation').set_value('Ficha e preço').run()
             name = next(t for t in app.text_input if t.label == 'Nome da plataforma')
             name.set_value('Shopee teste')
@@ -134,6 +144,103 @@ class ProductionTests(unittest.TestCase):
             self.assertEqual(repo.product_costs('P001')['platforms'][0]['name'], 'Shopee teste')
             self.assertEqual(repo.product_costs('P002')['platforms'], [])
             self.assertTrue(any(b.label == 'Aplicar preço ao produto' for b in app.button))
+
+    def ui_app(self):
+        products = pd.DataFrame([dict(id_produto='P001', nome_produto='Teste', categoria='A1', tamanho='A1', cor='A1', material='A1', preco=20, custo=5, qtd_kit='A1', sku='SKU', codigo_barras='', imagem_url='')])
+        def sheet(name):
+            return products if name == 'PRODUTOS' else pd.DataFrame([dict(id='A1', nome='Opção', abreviacao='OP', ativo='Sim')])
+        reader = patch('repositories.data.read_sheet', side_effect=sheet)
+        reader.start()
+        self.addCleanup(reader.stop)
+        app = AppTest.from_file(str(Path(__file__).resolve().parents[1]/'app.py'))
+        app.session_state['authenticated'] = True
+        return app.run(timeout=20)
+
+    def navigate(self, app, label):
+        next(w for w in app.get('button_group') if w.key == 'main_navigation').set_value(label).run()
+        self.assertFalse(app.exception)
+
+    def field(self, app, kind, label):
+        return next(w for w in getattr(app, kind) if w.label == label)
+
+    def click(self, app, label):
+        self.field(app, 'button', label).click().run()
+        self.assertFalse(app.exception)
+
+    def test_hour_modes_print_profile_and_new_session(self):
+        app = self.ui_app()
+        self.navigate(app, 'Custos de produção')
+        self.field(app, 'number_input', 'Valor da hora (R$)').set_value(27.)
+        self.click(app, 'Salvar valor da hora')
+        self.assertEqual(repo.hourly(repo.settings()), 27)
+        self.assertEqual(app.session_state['_active_page'], '⏱️ Custos de produção')
+        app.radio(key='costs_hour_mode').set_value('Calcular pela remuneração mensal').run()
+        self.field(app, 'number_input', 'Remuneração mensal desejada (R$)').set_value(3000.)
+        self.field(app, 'number_input', 'Horas produtivas por mês').set_value(100.)
+        self.click(app, 'Salvar valor da hora')
+        self.assertEqual(repo.hourly(repo.settings()), 30)
+        self.assertTrue(any('Valor da hora salvo' in m.value for m in app.success))
+        app.selectbox(key='costs_section').select('Custo por impressão').run()
+        self.field(app, 'text_input', 'Nome do perfil / impressora').set_value('Impressora teste')
+        self.field(app, 'number_input', 'Custo do conjunto de tinta ou toner (R$)').set_value(120.)
+        self.field(app, 'number_input', 'Rendimento estimado em lados impressos').set_value(600)
+        self.field(app, 'number_input', 'Manutenção por lado (R$)').set_value(.02)
+        self.field(app, 'number_input', 'Energia por lado (R$)').set_value(.01)
+        self.click(app, 'Salvar perfil')
+        self.assertEqual(repo.print_rate(repo.settings()['prints'][0]), Decimal('.23'))
+        self.assertEqual(app.session_state['page'], '⏱️ Custos de produção')
+        self.assertEqual(app.selectbox(key='costs_section').value, 'Custo por impressão')
+        # A separate Streamlit session must reload from DynamoDB, not session state.
+        app = self.ui_app()
+        self.navigate(app, 'Custos de produção')
+        self.assertEqual(app.radio(key='costs_hour_mode').value, 'Calcular pela remuneração mensal')
+        self.assertTrue(any(m.value == 'R$ 30,00' for m in app.metric))
+
+    def test_material_entry_recipe_platform_price_and_production_forms(self):
+        app = self.ui_app()
+        self.navigate(app, 'Matérias-primas')
+        self.field(app, 'radio', 'Área de estoque').set_value('Cadastrar matéria-prima').run()
+        self.field(app, 'text_input', 'Nome').set_value('Papel teste')
+        self.field(app, 'text_input', 'Marca').set_value('Marca teste')
+        self.field(app, 'number_input', 'Preço de uma embalagem (R$)').set_value(35.)
+        self.click(app, 'Salvar matéria-prima')
+        self.assertEqual(app.session_state['page'], '📦 Matérias-primas e estoque')
+        mid = repo.materials()[0]['SK']
+        self.field(app, 'radio', 'Área de estoque').set_value('Registrar entrada').run()
+        self.field(app, 'number_input', 'Embalagens compradas').set_value(2.)
+        self.click(app, 'Confirmar movimentação')
+        self.assertEqual(store.get(repo.MATERIALS, mid)['stock'], 1000)
+        self.navigate(app, 'Ficha e preço')
+        self.click(app, 'Adicionar à ficha')
+        self.assertEqual(repo.product_costs('P001')['recipe'][0]['material_id'], mid)
+        self.field(app, 'text_input', 'Nome da plataforma').set_value('Venda teste')
+        self.field(app, 'number_input', 'Comissão máxima (%)').set_value(10.)
+        self.click(app, 'Adicionar plataforma')
+        self.assertEqual(len(repo.product_costs('P001')['platforms']), 1)
+        self.field(app, 'checkbox', 'Confirmo atualizar o preço e o custo do produto no catálogo').check().run()
+        with patch('views.production.update_row') as update:
+            self.click(app, 'Aplicar preço ao produto')
+        update.assert_called_once()
+        self.assertEqual(app.session_state['page'], '🧾 Ficha e preço')
+        self.field(app, 'checkbox', 'Confirmo a produção e a baixa dos materiais').check()
+        self.click(app, 'Confirmar produção')
+        self.assertEqual(store.get(repo.MATERIALS, mid)['stock'], 999)
+        self.assertEqual(app.session_state['page'], '🧾 Ficha e preço')
+
+    def test_save_failure_stays_on_form_and_displays_error(self):
+        app = self.ui_app()
+        self.navigate(app, 'Custos de produção')
+        self.field(app, 'number_input', 'Valor da hora (R$)').set_value(40.)
+        with patch('services.dynamodb.put', side_effect=store.StorageError('Sem permissão para gravar.')):
+            self.click(app, 'Salvar valor da hora')
+        self.assertEqual(app.session_state['_active_page'], '⏱️ Custos de produção')
+        self.assertTrue(any('Sem permissão' in e.value for e in app.error))
+        self.assertFalse(app.success)
+        self.assertEqual(repo.hourly(repo.settings()), 0)
+        # Clicking the selected navigation pill again must not navigate home.
+        next(w for w in app.get('button_group') if w.key == 'main_navigation').set_value(None).run()
+        self.assertFalse(app.exception)
+        self.assertEqual(app.session_state['_active_page'], '⏱️ Custos de produção')
 
     def test_query_reads_all_pages(self):
         for i in range(4):

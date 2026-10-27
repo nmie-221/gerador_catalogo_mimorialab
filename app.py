@@ -365,23 +365,39 @@ navigation = {
     "Cadastros": "🧩 Catálogos auxiliares",
 }
 product_routes = {"Consultar": "🔎 Consultar Produtos", "Cadastrar": "📝 Cadastrar produto", "Editar ou excluir": "⚙️ Editar ou excluir"}
-if st.session_state.get('page') not in list(navigation.values())+list(product_routes.values()):
-    st.session_state.page = "🏠 Início"
-current = next((label for label, route in navigation.items() if route == st.session_state.page), "Produtos")
+# Keep the route outside widget-owned keys: Streamlit cleans up widget state
+# when a control disappears, and changing defaults can recreate controls.
+valid_routes = list(navigation.values())+list(product_routes.values())
+if '_active_page' not in st.session_state:
+    st.session_state._active_page = st.session_state.get('page', '🏠 Início')
+if st.session_state._active_page not in valid_routes:
+    st.session_state._active_page = '🏠 Início'
+current = next((label for label, route in navigation.items() if route == st.session_state._active_page), 'Produtos')
+if st.session_state.get('main_navigation') not in navigation:
+    st.session_state.main_navigation = current
+
 def change_navigation():
-    if st.session_state.main_navigation is None:
-        st.session_state.main_navigation = current
-    st.session_state.page = navigation[st.session_state.main_navigation]
+    label = st.session_state.main_navigation
+    if label is None:
+        label = next((k for k, v in navigation.items() if v == st.session_state._active_page), 'Produtos')
+        st.session_state.main_navigation = label
+    st.session_state._active_page = navigation[label]
+    if label == 'Produtos':
+        st.session_state.product_action = 'Consultar'
+
 def change_product_action():
-    st.session_state.page = product_routes[st.session_state.product_action]
+    st.session_state._active_page = product_routes[st.session_state.product_action]
+
 with st.container(key='primary_nav'):
-    st.pills('Navegação principal', list(navigation), selection_mode='single', default=current,
+    st.pills('Navegação principal', list(navigation), selection_mode='single',
              key='main_navigation', label_visibility='collapsed', on_change=change_navigation)
-if st.session_state.page in product_routes.values():
-    selected_action = next(label for label, route in product_routes.items() if route == st.session_state.page)
-    st.radio('Área de produtos', list(product_routes), horizontal=True, index=list(product_routes).index(selected_action),
+if st.session_state._active_page in product_routes.values():
+    if st.session_state.get('product_action') not in product_routes:
+        st.session_state.product_action = next(label for label, route in product_routes.items() if route == st.session_state._active_page)
+    st.radio('Área de produtos', list(product_routes), horizontal=True,
              key='product_action', label_visibility='collapsed', on_change=change_product_action)
-page = st.session_state.page
+page = st.session_state._active_page
+st.session_state.page = page  # compatibility with existing links and sessions
 try:
     {
         "🔎 Consultar Produtos": dashboard,

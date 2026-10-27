@@ -44,9 +44,11 @@ def costs_page():
     st.title('Custos de produção')
     notice()
     config = repo.settings()
-    section = st.selectbox('Configuração', ['Hora de mão de obra', 'Custo por impressão'])
+    section = st.selectbox('Configuração', ['Hora de mão de obra', 'Custo por impressão'], key='costs_section')
     if section == 'Hora de mão de obra':
-        mode = st.radio('Como definir o valor?', ['Informar valor da hora', 'Calcular pela remuneração mensal'], index=0 if config['hour_mode'] == 'direct' else 1)
+        if 'costs_hour_mode' not in st.session_state:
+            st.session_state.costs_hour_mode = 'Informar valor da hora' if config['hour_mode'] == 'direct' else 'Calcular pela remuneração mensal'
+        mode = st.radio('Como definir o valor?', ['Informar valor da hora', 'Calcular pela remuneração mensal'], key='costs_hour_mode')
         with st.form(f"hour_settings_{config['revision']}"):
             data = deepcopy(config)
             if mode == 'Informar valor da hora':
@@ -287,6 +289,7 @@ def platform_fields(p):
 
 
 def jump(page, nav, product_action=None):
+    st.session_state._active_page = page
     st.session_state.page = page
     st.session_state.main_navigation = nav
     if product_action:
