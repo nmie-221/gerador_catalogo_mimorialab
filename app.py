@@ -17,92 +17,41 @@ st.set_page_config(page_title="Catálogo de Produtos", page_icon="📦", layout=
 st.markdown(
     """
     <style>
-    :root {
-        --brand-purple: #7344B1;
-        --brand-purple-light: #AF84E5;
-        --brand-lilac: #F3EDFC;
-        --brand-dark: #2D1D41;
-        --brand-gold: #CC9D39;
-    }
-    div.stButton > button[kind="primary"],
-    div.stFormSubmitButton > button,
-    button[data-testid="baseButton-primary"] {
-        background-color: var(--brand-purple) !important;
-        border-color: var(--brand-purple) !important;
-        color: white !important;
-    }
-    div.stButton > button[kind="primary"]:hover,
-    div.stFormSubmitButton > button:hover,
-    button[data-testid="baseButton-primary"]:hover {
-        background-color: var(--brand-purple-light) !important;
-        border-color: var(--brand-purple-light) !important;
-    }
-    input, textarea, select, [role="combobox"] {
-        accent-color: var(--brand-purple) !important;
-    }
-    input:focus, textarea:focus, [data-baseweb="select"]:focus-within,
-    [data-baseweb="input"]:focus-within, [data-baseweb="textarea"]:focus-within {
-        border-color: var(--brand-purple-light) !important;
-        box-shadow: 0 0 0 1px var(--brand-purple-light) !important;
-    }
-    [data-baseweb="tag"] {
-        background-color: var(--brand-purple) !important;
-    }
-    [data-testid="stCheckbox"],
-    [data-testid="stCheckbox"] *,
-    [data-testid="stCheckbox"] label,
-    [data-testid="stCheckbox"] label > div,
-    [data-testid="stCheckbox"] label > div > div,
-    [data-testid="stCheckbox"] [aria-selected="true"] {
-        background-color: transparent !important;
-        color: var(--brand-lilac) !important;
-    }
-    [data-testid="stCheckbox"] [role="checkbox"][aria-checked="true"],
-    [data-testid="stCheckbox"] input:checked + div {
-        background-color: var(--brand-purple) !important;
-        border-color: var(--brand-purple) !important;
-    }
-    [data-testid="stCheckbox"] svg,
-    [data-testid="stCheckbox"] svg path {
-        color: var(--brand-purple) !important;
-        fill: var(--brand-purple) !important;
-    }
-    [data-baseweb="tab-highlight"] {
-        background-color: var(--brand-purple-light) !important;
-    }
-    [data-baseweb="tab"][aria-selected="true"] {
-        color: var(--brand-purple-light) !important;
-        background-color: transparent !important;
-    }
-    a, [data-testid="stMetricValue"] {
-        color: var(--brand-purple-light) !important;
-    }
-    [data-testid="stProgressBar"] > div > div {
-        background-color: var(--brand-purple) !important;
-    }
-    @media (max-width: 640px) {
-        .stMainBlockContainer, .block-container {
-            padding-left: 1rem;
-            padding-right: 1rem;
-            padding-top: 2rem;
-        }
-        h1 {
-            font-size: 1.75rem !important;
-        }
-        .stButton > button, .stFormSubmitButton > button {
-            min-height: 2.75rem;
-        }
-        [data-baseweb="tab-list"] {
-            gap: 1rem;
-            overflow-x: auto;
-        }
-        [data-baseweb="tab"] {
-            flex-shrink: 0;
-        }
+    .stMainBlockContainer, .block-container {max-width:1160px;padding:4rem 1.5rem 4rem;}
+    h1 {font-size:1.85rem!important;letter-spacing:-.7px;}
+    [data-testid="stHeading"] h1 {padding-top:0;padding-bottom:.5rem;}
+    [class*="st-key-card_"] {background:white;border-color:#e8e1ef!important;border-radius:16px;box-shadow:0 8px 30px #34204408;}
+    h2 {font-size:1.3rem!important;} h3 {font-size:1.05rem!important;}
+    [data-testid="stHeader"] {background:rgba(247,245,250,.94);}
+    .mimoria-header {display:grid;grid-template-columns:40px 1fr 40px;align-items:center;
+        min-height:90px;background:white;border-bottom:1px solid #e8e1ef;margin-bottom:12px;}
+    .mimoria-header h2 {text-align:center;font-size:1.35rem!important;margin:0;padding:0;}
+    .mimoria-header h2 span {color:#7344b1;}
+    [data-testid="stVerticalBlockBorderWrapper"]>div {border-color:#e8e1ef!important;border-radius:16px!important;}
+    [data-testid="stForm"], [data-testid="stExpander"], [data-testid="stMetric"] {
+        background:white;border:1px solid #e8e1ef;border-radius:14px;padding:16px;}
+    [data-testid="stMetricValue"] {color:#7344b1;}
+    [data-baseweb="input"], [data-baseweb="select"]>div, [data-baseweb="textarea"] {background:white;border-radius:10px;}
+    .stButton>button, .stFormSubmitButton>button {min-height:44px;border-radius:10px;}
+    [data-testid="stRadio"] [role="radiogroup"][aria-orientation="horizontal"] {
+        display:flex;flex-wrap:nowrap;overflow-x:auto;gap:6px;padding:8px 0 16px;
+        border-bottom:1px solid #e8e1ef;margin-bottom:12px;}
+    [data-testid="stRadio"] [role="radiogroup"][aria-orientation="horizontal"] label {
+        flex-shrink:0;margin:0;padding:10px 14px;border-radius:10px;min-height:44px;}
+    [data-testid="stRadio"] [role="radiogroup"][aria-orientation="horizontal"] label:has(input:checked) {background:#f0e9f9;color:#7344b1;}
+    [data-testid="stRadio"] [role="radiogroup"][aria-orientation="horizontal"] label>div>div:first-child:not([data-testid="stMarkdownContainer"]) {display:none;}
+    [data-testid="stRadio"] [role="radiogroup"][aria-orientation="horizontal"] p {white-space:nowrap;font-weight:600;font-size:.9rem;}
+    @media(max-width:640px){
+      .stMainBlockContainer,.block-container {padding:3.5rem 1rem 3rem;}
+      .mimoria-header {min-height:76px;}
+      .mimoria-header h2 {font-size:1.1rem!important;}
+      h1 {font-size:1.5rem!important;}
+      [data-testid="stRadio"] [role="radiogroup"][aria-orientation="horizontal"] label {padding:10px 11px;}
+      [data-baseweb="tab-list"] {overflow-x:auto;gap:1rem;}
+      [data-baseweb="tab"] {flex-shrink:0;}
     }
     </style>
-    """,
-    unsafe_allow_html=True,
+    """, unsafe_allow_html=True,
 )
 
 
@@ -247,6 +196,24 @@ def query_page() -> None:
     if search:
         mask = products.astype(str).apply(lambda column: column.str.contains(search, case=False, na=False)).any(axis=1)
         products = products[mask]
+    if st.radio('Visualização', ['Cartões', 'Tabela'], horizontal=True, label_visibility='collapsed') == 'Cartões':
+        from views.production import money, jump
+        columns = st.columns(3)
+        for index, (_, product) in enumerate(products.iterrows()):
+            with columns[index % 3], st.container(border=True, key="card_product_"+str(product["id_produto"])):
+                if product.get('imagem_url'):
+                    st.image(str(product['imagem_url']), use_container_width=True)
+                st.caption(str(product['id_produto'])+' · '+str(product.get('Categoria', '')))
+                st.subheader(str(product['nome_produto']))
+                st.metric('Preço de venda', money(product['Preco']))
+                st.caption('Custo cadastrado: '+money(product['Custo']))
+                def open_recipe(identifier=str(product['id_produto'])):
+                    st.session_state.cost_product = identifier
+                    jump('🧾 Ficha e preço', '☷ Ficha e preço')
+                st.button('Ficha e preço →', key='open_product_'+str(product['id_produto']), on_click=open_recipe)
+        if products.empty:
+            st.info('Nenhum produto encontrado.')
+        return
     st.dataframe(
         products,
         use_container_width=True,
@@ -374,20 +341,33 @@ if logo_path.exists():
     logo_data = b64encode(logo_path.read_bytes()).decode("ascii")
     logo_html = f'<img src="data:image/png;base64,{logo_data}" alt="MimoriaLab" style="width:40px;height:auto;">'
 st.markdown(
-    '<header style="display:grid;grid-template-columns:40px minmax(0,1fr) 40px;align-items:center;gap:8px;'
-    'min-height:88px;padding:16px 0;margin-bottom:32px;box-sizing:border-box;">'
-    f'<span>{logo_html}</span>'
-    '<h2 style="text-align:center;font-size:clamp(1rem,4vw,1.5rem);margin:0;padding:0;">Controle MimoriaLab</h2>'
-    '<span aria-hidden="true"></span></header>',
-    unsafe_allow_html=True,
+    '<header class="mimoria-header">'
+    f'<span>{logo_html}</span><h2>Controle <span>MimoriaLab</span></h2>'
+    '<span aria-hidden="true"></span></header>', unsafe_allow_html=True,
 )
 
-navigation_pages = ["🏠 Início", "🔎 Consultar Produtos", "📝 Cadastrar produto", "⚙️ Editar ou excluir", "🧩 Catálogos auxiliares", "📦 Matérias-primas e estoque", "🧾 Ficha e preço", "⏱️ Custos de produção"]
-if st.session_state.get("page") == "Dashboard":
-    st.session_state.page = "🔎 Consultar Produtos"
-if st.session_state.get("page") not in navigation_pages:
+navigation = {
+    "⌂ Início": "🏠 Início",
+    "◇ Produtos": "🔎 Consultar Produtos",
+    "▧ Matérias-primas": "📦 Matérias-primas e estoque",
+    "☷ Ficha e preço": "🧾 Ficha e preço",
+    "◷ Custos de produção": "⏱️ Custos de produção",
+    "⚙ Cadastros": "🧩 Catálogos auxiliares",
+}
+product_routes = {"Consultar": "🔎 Consultar Produtos", "Cadastrar": "📝 Cadastrar produto", "Editar ou excluir": "⚙️ Editar ou excluir"}
+if st.session_state.get('page') not in list(navigation.values())+list(product_routes.values()):
     st.session_state.page = "🏠 Início"
-st.selectbox("O que você quer fazer?", navigation_pages, key="page")
+current = next((label for label, route in navigation.items() if route == st.session_state.page), "◇ Produtos")
+def change_navigation():
+    st.session_state.page = navigation[st.session_state.main_navigation]
+def change_product_action():
+    st.session_state.page = product_routes[st.session_state.product_action]
+st.radio('Navegação principal', list(navigation), horizontal=True, index=list(navigation).index(current),
+         key='main_navigation', label_visibility='collapsed', on_change=change_navigation)
+if st.session_state.page in product_routes.values():
+    selected_action = next(label for label, route in product_routes.items() if route == st.session_state.page)
+    st.radio('Área de produtos', list(product_routes), horizontal=True, index=list(product_routes).index(selected_action),
+             key='product_action', label_visibility='collapsed', on_change=change_product_action)
 page = st.session_state.page
 try:
     {
