@@ -41,6 +41,16 @@ st.markdown(
     [data-testid="stRadio"] [role="radiogroup"][aria-orientation="horizontal"] label:has(input:checked) {background:#f0e9f9;color:#7344b1;}
     [data-testid="stRadio"] [role="radiogroup"][aria-orientation="horizontal"] label>div>div:first-child:not([data-testid="stMarkdownContainer"]) {display:none;}
     [data-testid="stRadio"] [role="radiogroup"][aria-orientation="horizontal"] p {white-space:nowrap;font-weight:600;font-size:.9rem;}
+    .st-key-primary_nav .st-key-main_navigation {max-width:100%;overflow-x:auto;}
+    .st-key-primary_nav [data-testid="stButtonGroup"] {overflow-x:auto;padding:8px 0 16px;}
+    .st-key-primary_nav [data-testid="stButtonGroup"]>div {flex-wrap:nowrap;}
+    .st-key-primary_nav button {background:#7344b1!important;color:white!important;
+        border:1px solid #7344b1!important;border-radius:10px!important;
+        min-height:44px;padding:10px 16px;white-space:nowrap;flex-shrink:0;}
+    .st-key-primary_nav button p {color:white!important;font-weight:600;}
+    .st-key-primary_nav button:hover {background:#63369f!important;}
+    .st-key-primary_nav button[aria-pressed="true"], .st-key-primary_nav button[aria-checked="true"] {background:#4e267e!important;
+        border-color:#4e267e!important;box-shadow:0 0 0 2px #d8c5ee;}
     @media(max-width:640px){
       .stMainBlockContainer,.block-container {padding:3.5rem 1rem 3rem;}
       .mimoria-header {min-height:76px;}
@@ -359,11 +369,14 @@ if st.session_state.get('page') not in list(navigation.values())+list(product_ro
     st.session_state.page = "🏠 Início"
 current = next((label for label, route in navigation.items() if route == st.session_state.page), "◇ Produtos")
 def change_navigation():
+    if st.session_state.main_navigation is None:
+        st.session_state.main_navigation = current
     st.session_state.page = navigation[st.session_state.main_navigation]
 def change_product_action():
     st.session_state.page = product_routes[st.session_state.product_action]
-st.radio('Navegação principal', list(navigation), horizontal=True, index=list(navigation).index(current),
-         key='main_navigation', label_visibility='collapsed', on_change=change_navigation)
+with st.container(key='primary_nav'):
+    st.pills('Navegação principal', list(navigation), selection_mode='single', default=current,
+             key='main_navigation', label_visibility='collapsed', on_change=change_navigation)
 if st.session_state.page in product_routes.values():
     selected_action = next(label for label, route in product_routes.items() if route == st.session_state.page)
     st.radio('Área de produtos', list(product_routes), horizontal=True, index=list(product_routes).index(selected_action),
