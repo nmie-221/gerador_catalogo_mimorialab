@@ -201,7 +201,7 @@ class ProductionTests(unittest.TestCase):
         self.navigate(app, 'Matérias-primas')
         self.field(app, 'radio', 'Área de estoque').set_value('Cadastrar matéria-prima').run()
         self.field(app, 'text_input', 'Nome').set_value('Papel teste')
-        self.field(app, 'text_input', 'Marca').set_value('Marca teste')
+        self.field(app, 'selectbox', 'Marca').select('Chamex')
         self.field(app, 'number_input', 'Preço de uma embalagem (R$)').set_value(35.)
         self.click(app, 'Salvar matéria-prima')
         self.assertEqual(app.session_state['page'], '📦 Matérias-primas e estoque')
@@ -241,6 +241,17 @@ class ProductionTests(unittest.TestCase):
         next(w for w in app.get('button_group') if w.key == 'main_navigation').set_value(None).run()
         self.assertFalse(app.exception)
         self.assertEqual(app.session_state['_active_page'], '⏱️ Custos de produção')
+
+    def test_material_suggestions_keep_custom_values_and_require_brand(self):
+        from views.production import suggested_input
+        with patch('views.production.st.selectbox', return_value='Minha marca') as select:
+            self.assertEqual(suggested_input('Marca', ['Chamex'], ['Marca própria', 'chamex'], 'Marca própria'), 'Minha marca')
+            self.assertEqual(select.call_args.args[1], ['Chamex', 'Marca própria'])
+            self.assertTrue(select.call_args.kwargs['accept_new_options'])
+            self.assertEqual(select.call_args.kwargs['index'], 1)
+        with self.assertRaises(ValueError):
+            repo.save_material(dict(name='Papel', brand=None, pack='Resma', per=500, unit='folha', price=35, minimum=0, active=True))
+        self.assertEqual(repo.materials(), [])
 
     def test_query_reads_all_pages(self):
         for i in range(4):

@@ -83,6 +83,23 @@ def costs_page():
         st.info('Papel entra como matéria-prima na ficha. Frente e verso correspondem a dois lados. Rendimento de tinta é estimado.')
 
 
+def suggested_input(label, defaults, existing=(), current=None):
+    options, seen = [], set()
+    for value in [*defaults, *existing, *([current] if current else [])]:
+        text = str(value).strip()
+        if text and text.casefold() not in seen:
+            options.append(text)
+            seen.add(text.casefold())
+    selected = next((i for i, value in enumerate(options) if current and value.casefold() == str(current).casefold()), None)
+    return st.selectbox(label, options, index=selected, accept_new_options=True,
+                        placeholder='Selecione ou digite uma nova opção')
+
+
+BRANDS = ['Chamex', 'Chamequinho', 'Report', 'Colacril', 'Progresso', 'Cromus', 'Sem marca']
+PURCHASE_UNITS = ['Resma', 'Pacote', 'Rolo', 'Caixa', 'Folha', 'Unidade', 'Frasco', 'Pote', 'Litro', 'Quilo']
+USAGE_UNITS = ['folha', 'unidade', 'metro', 'centímetro', 'm²', 'grama', 'quilo', 'mililitro', 'litro']
+
+
 def inventory_page():
     st.caption('SUPRIMENTOS')
     st.title('Matérias-primas')
@@ -92,7 +109,15 @@ def inventory_page():
     section = st.radio('Área de estoque', ['Saldo e custos', 'Cadastrar matéria-prima', 'Editar matéria-prima', 'Registrar entrada', 'Perda ou ajuste', 'Histórico'], horizontal=True)
     if section == 'Cadastrar matéria-prima':
         with st.form('new_material', clear_on_submit=False):
-            data = dict(name=st.text_input('Nome'), brand=st.text_input('Marca'), pack=st.text_input('Unidade de compra', 'Resma'), per=st.number_input('Quantidade de uso por embalagem', min_value=.000001, value=500., format='%.4f'), unit=st.text_input('Unidade de uso', 'folha'), price=n('Preço de uma embalagem (R$)'), minimum=n('Estoque mínimo na unidade de uso'), stock=0, active=True)
+            data = dict(
+                name=st.text_input('Nome'),
+                brand=suggested_input('Marca', BRANDS, [m['brand'] for m in items]),
+                pack=suggested_input('Unidade de compra', PURCHASE_UNITS, [m['pack'] for m in items], 'Resma'),
+                per=suggested_input('Quantidade de uso por embalagem', ['1', '10', '20', '50', '100', '250', '500', '1000'], current='500'),
+                unit=suggested_input('Unidade de uso', USAGE_UNITS, [m['unit'] for m in items], 'folha'),
+                price=n('Preço de uma embalagem (R$)'), minimum=n('Estoque mínimo na unidade de uso'), stock=0, active=True,
+            )
+            st.caption('Você pode selecionar uma sugestão ou digitar um novo valor. Preço e estoque mínimo continuam livres.')
             if st.form_submit_button('Salvar matéria-prima'):
                 action(lambda: repo.save_material(data), 'Matéria-prima cadastrada. Registre uma entrada para adicionar estoque.')
         return
@@ -132,8 +157,8 @@ def inventory_page():
         with st.form(f"edit_material_{identifier}_{m['revision']}"):
             data = deepcopy(m)
             data['name'] = st.text_input('Nome', m['name'])
-            data['brand'] = st.text_input('Marca', m['brand'])
-            data['pack'] = st.text_input('Unidade de compra', m['pack'])
+            data['brand'] = suggested_input('Marca', BRANDS, [item['brand'] for item in items], m['brand'])
+            data['pack'] = suggested_input('Unidade de compra', PURCHASE_UNITS, [item['pack'] for item in items], m['pack'])
             data['price'] = n('Preço da embalagem (R$)', m['price'])
             data['minimum'] = n('Estoque mínimo', m['minimum'])
             data['active'] = st.checkbox('Ativo', m['active'])

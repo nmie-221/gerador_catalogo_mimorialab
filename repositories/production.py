@@ -56,7 +56,7 @@ def materials():
 
 def save_material(data):
     value = deepcopy(data)
-    if not all(str(value.get(k, '')).strip() for k in ['name', 'brand', 'pack', 'unit']):
+    if not all(isinstance(value.get(k), str) and value[k].strip() for k in ['name', 'brand', 'pack', 'unit']):
         raise ValueError('Preencha nome, marca e unidades de compra e uso.')
     value['per'] = decimal(value['per'], 'Quantidade por embalagem', positive=True)
     for key in ['price', 'minimum', 'stock']:
