@@ -10,6 +10,8 @@ from repositories.data import active, add_domain, add_product, catalog, delete_d
 from services.auth import is_authenticated, login_screen
 from services.google_sheets import SheetsError
 from utils.validators import number, required_fields
+from views.production import inventory_page, costs_page, recipe_page, home_page
+from services.dynamodb import StorageError
 
 st.set_page_config(page_title="Catálogo de Produtos", page_icon="📦", layout="wide")
 st.markdown(
@@ -380,11 +382,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-navigation_pages = ["🔎 Consultar Produtos", "📝 Cadastrar produto", "⚙️ Editar ou excluir", "🧩 Catálogos auxiliares"]
+navigation_pages = ["🏠 Início", "🔎 Consultar Produtos", "📝 Cadastrar produto", "⚙️ Editar ou excluir", "🧩 Catálogos auxiliares", "📦 Matérias-primas e estoque", "🧾 Ficha e preço", "⏱️ Custos de produção"]
 if st.session_state.get("page") == "Dashboard":
     st.session_state.page = "🔎 Consultar Produtos"
 if st.session_state.get("page") not in navigation_pages:
-    st.session_state.page = "🔎 Consultar Produtos"
+    st.session_state.page = "🏠 Início"
 st.selectbox("O que você quer fazer?", navigation_pages, key="page")
 page = st.session_state.page
 try:
@@ -393,6 +395,10 @@ try:
         "📝 Cadastrar produto": register_page,
         "⚙️ Editar ou excluir": manage_page,
         "🧩 Catálogos auxiliares": auxiliary_page,
+        "📦 Matérias-primas e estoque": inventory_page,
+        "🏠 Início": home_page,
+        "🧾 Ficha e preço": recipe_page,
+        "⏱️ Custos de produção": costs_page,
     }[page]()
-except SheetsError as exc:
+except (SheetsError, StorageError, ValueError) as exc:
     st.error(str(exc))
