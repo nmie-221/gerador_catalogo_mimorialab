@@ -219,7 +219,7 @@ def query_page() -> None:
                 st.caption('Custo cadastrado: '+money(product['Custo']))
                 def open_recipe(identifier=str(product['id_produto'])):
                     st.session_state.cost_product = identifier
-                    jump('🧾 Ficha e preço', '☷ Ficha e preço')
+                    jump('🧾 Ficha e preço', 'Ficha e preço')
                 st.button('Ficha e preço →', key='open_product_'+str(product['id_produto']), on_click=open_recipe)
         if products.empty:
             st.info('Nenhum produto encontrado.')
@@ -357,17 +357,17 @@ st.markdown(
 )
 
 navigation = {
-    "⌂ Início": "🏠 Início",
-    "◇ Produtos": "🔎 Consultar Produtos",
-    "▧ Matérias-primas": "📦 Matérias-primas e estoque",
-    "☷ Ficha e preço": "🧾 Ficha e preço",
-    "◷ Custos de produção": "⏱️ Custos de produção",
-    "⚙ Cadastros": "🧩 Catálogos auxiliares",
+    "Início": "🏠 Início",
+    "Produtos": "🔎 Consultar Produtos",
+    "Matérias-primas": "📦 Matérias-primas e estoque",
+    "Ficha e preço": "🧾 Ficha e preço",
+    "Custos de produção": "⏱️ Custos de produção",
+    "Cadastros": "🧩 Catálogos auxiliares",
 }
 product_routes = {"Consultar": "🔎 Consultar Produtos", "Cadastrar": "📝 Cadastrar produto", "Editar ou excluir": "⚙️ Editar ou excluir"}
 if st.session_state.get('page') not in list(navigation.values())+list(product_routes.values()):
     st.session_state.page = "🏠 Início"
-current = next((label for label, route in navigation.items() if route == st.session_state.page), "◇ Produtos")
+current = next((label for label, route in navigation.items() if route == st.session_state.page), "Produtos")
 def change_navigation():
     if st.session_state.main_navigation is None:
         st.session_state.main_navigation = current

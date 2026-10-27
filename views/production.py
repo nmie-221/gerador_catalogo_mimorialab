@@ -313,9 +313,9 @@ def home_page():
     left, right = st.columns([1.2, 1], gap='large')
     with left, st.container(border=True, key="card_home_actions"):
         st.subheader('O que vamos fazer hoje?')
-        st.button('＋ Cadastrar produto', type='primary', use_container_width=True, on_click=jump, args=('📝 Cadastrar produto', '◇ Produtos', 'Cadastrar'))
-        st.button('↗ Matérias-primas e entradas', use_container_width=True, on_click=jump, args=('📦 Matérias-primas e estoque', '▧ Matérias-primas'))
-        st.button('✦ Ficha técnica e produção', use_container_width=True, on_click=jump, args=('🧾 Ficha e preço', '☷ Ficha e preço'))
+        st.button('＋ Cadastrar produto', type='primary', use_container_width=True, on_click=jump, args=('📝 Cadastrar produto', 'Produtos', 'Cadastrar'))
+        st.button('↗ Matérias-primas e entradas', use_container_width=True, on_click=jump, args=('📦 Matérias-primas e estoque', 'Matérias-primas'))
+        st.button('✦ Ficha técnica e produção', use_container_width=True, on_click=jump, args=('🧾 Ficha e preço', 'Ficha e preço'))
         st.info('Cadastre o material, monte a ficha técnica e confirme a produção para dar baixa no estoque.')
     with right, st.container(border=True, key="card_home_stock"):
         st.subheader('Atenção ao estoque')
@@ -324,4 +324,4 @@ def home_page():
         for m in low:
             st.write('**'+m['name']+'**')
             st.caption(f"Saldo: {float(m['stock']):g} {m['unit']} · mínimo {float(m['minimum']):g}")
-        st.button('Ver todos os materiais →', on_click=jump, args=('📦 Matérias-primas e estoque', '▧ Matérias-primas'))
+        st.button('Ver todos os materiais →', on_click=jump, args=('📦 Matérias-primas e estoque', 'Matérias-primas'))

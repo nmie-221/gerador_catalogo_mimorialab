@@ -123,10 +123,10 @@ class ProductionTests(unittest.TestCase):
             app.session_state['authenticated'] = True
             app.run(timeout=20)
             for page in ['🏠 Início', '📦 Matérias-primas e estoque', '⏱️ Custos de produção', '🧾 Ficha e preço', '🧩 Catálogos auxiliares', '🔎 Consultar Produtos']:
-                nav = {'🏠 Início':'⌂ Início','📦 Matérias-primas e estoque':'▧ Matérias-primas','⏱️ Custos de produção':'◷ Custos de produção','🧾 Ficha e preço':'☷ Ficha e preço','🧩 Catálogos auxiliares':'⚙ Cadastros','🔎 Consultar Produtos':'◇ Produtos'}
+                nav = {'🏠 Início':'Início','📦 Matérias-primas e estoque':'Matérias-primas','⏱️ Custos de produção':'Custos de produção','🧾 Ficha e preço':'Ficha e preço','🧩 Catálogos auxiliares':'Cadastros','🔎 Consultar Produtos':'Produtos'}
                 next(w for w in app.get('button_group') if w.key == 'main_navigation').set_value(nav[page]).run(timeout=20)
                 self.assertFalse(app.exception, page)
-            next(w for w in app.get('button_group') if w.key == 'main_navigation').set_value('☷ Ficha e preço').run()
+            next(w for w in app.get('button_group') if w.key == 'main_navigation').set_value('Ficha e preço').run()
             name = next(t for t in app.text_input if t.label == 'Nome da plataforma')
             name.set_value('Shopee teste')
             next(b for b in app.button if b.label == 'Adicionar plataforma').click().run()
