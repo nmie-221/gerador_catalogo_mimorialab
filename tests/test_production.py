@@ -201,10 +201,11 @@ class ProductionTests(unittest.TestCase):
         self.navigate(app, 'Matérias-primas')
         self.field(app, 'radio', 'Área de estoque').set_value('Cadastrar matéria-prima').run()
         self.field(app, 'text_input', 'Nome').set_value('Papel teste')
-        self.field(app, 'selectbox', 'Marca').select('Chamex')
+        self.field(app, 'text_input', 'Marca').set_value('Minha marca livre')
         self.field(app, 'number_input', 'Preço de uma embalagem (R$)').set_value(35.)
         self.click(app, 'Salvar matéria-prima')
         self.assertEqual(app.session_state['page'], '📦 Matérias-primas e estoque')
+        self.assertEqual(repo.materials()[0]['brand'], 'Minha marca livre')
         mid = repo.materials()[0]['SK']
         self.field(app, 'radio', 'Área de estoque').set_value('Registrar entrada').run()
         self.field(app, 'number_input', 'Embalagens compradas').set_value(2.)

@@ -95,9 +95,8 @@ def suggested_input(label, defaults, existing=(), current=None):
                         placeholder='Selecione ou digite uma nova opção')
 
 
-BRANDS = ['Chamex', 'Chamequinho', 'Report', 'Colacril', 'Progresso', 'Cromus', 'Sem marca']
-PURCHASE_UNITS = ['Resma', 'Pacote', 'Rolo', 'Caixa', 'Folha', 'Unidade', 'Frasco', 'Pote', 'Litro', 'Quilo']
-USAGE_UNITS = ['folha', 'unidade', 'metro', 'centímetro', 'm²', 'grama', 'quilo', 'mililitro', 'litro']
+PURCHASE_UNITS = ['Resma', 'Metro', 'Cm', 'Pacote', 'Rolo', 'Caixa', 'Folha', 'Unidade', 'Frasco', 'Pote', 'Litro', 'Quilo']
+USAGE_UNITS = ['folha', 'unidade', 'Resma', 'Metro', 'Cm', 'm²', 'grama', 'quilo', 'mililitro', 'litro']
 
 
 def inventory_page():
@@ -111,7 +110,7 @@ def inventory_page():
         with st.form('new_material', clear_on_submit=False):
             data = dict(
                 name=st.text_input('Nome'),
-                brand=suggested_input('Marca', BRANDS, [m['brand'] for m in items]),
+                brand=st.text_input('Marca'),
                 pack=suggested_input('Unidade de compra', PURCHASE_UNITS, [m['pack'] for m in items], 'Resma'),
                 per=suggested_input('Quantidade de uso por embalagem', ['1', '10', '20', '50', '100', '250', '500', '1000'], current='500'),
                 unit=suggested_input('Unidade de uso', USAGE_UNITS, [m['unit'] for m in items], 'folha'),
@@ -157,7 +156,7 @@ def inventory_page():
         with st.form(f"edit_material_{identifier}_{m['revision']}"):
             data = deepcopy(m)
             data['name'] = st.text_input('Nome', m['name'])
-            data['brand'] = suggested_input('Marca', BRANDS, [item['brand'] for item in items], m['brand'])
+            data['brand'] = st.text_input('Marca', m['brand'])
             data['pack'] = suggested_input('Unidade de compra', PURCHASE_UNITS, [item['pack'] for item in items], m['pack'])
             data['price'] = n('Preço da embalagem (R$)', m['price'])
             data['minimum'] = n('Estoque mínimo', m['minimum'])
