@@ -10,97 +10,69 @@ from repositories.data import active, add_domain, add_product, catalog, delete_d
 from services.auth import is_authenticated, login_screen
 from services.google_sheets import SheetsError
 from utils.validators import number, required_fields
+from views.production import inventory_page, costs_page, recipe_page, home_page
+from services.dynamodb import StorageError
 
 st.set_page_config(page_title="Catálogo de Produtos", page_icon="📦", layout="wide")
 st.markdown(
     """
     <style>
-    :root {
-        --brand-purple: #7344B1;
-        --brand-purple-light: #AF84E5;
-        --brand-lilac: #F3EDFC;
-        --brand-dark: #2D1D41;
-        --brand-gold: #CC9D39;
-    }
-    div.stButton > button[kind="primary"],
-    div.stFormSubmitButton > button,
-    button[data-testid="baseButton-primary"] {
-        background-color: var(--brand-purple) !important;
-        border-color: var(--brand-purple) !important;
-        color: white !important;
-    }
-    div.stButton > button[kind="primary"]:hover,
-    div.stFormSubmitButton > button:hover,
-    button[data-testid="baseButton-primary"]:hover {
-        background-color: var(--brand-purple-light) !important;
-        border-color: var(--brand-purple-light) !important;
-    }
-    input, textarea, select, [role="combobox"] {
-        accent-color: var(--brand-purple) !important;
-    }
-    input:focus, textarea:focus, [data-baseweb="select"]:focus-within,
-    [data-baseweb="input"]:focus-within, [data-baseweb="textarea"]:focus-within {
-        border-color: var(--brand-purple-light) !important;
-        box-shadow: 0 0 0 1px var(--brand-purple-light) !important;
-    }
-    [data-baseweb="tag"] {
-        background-color: var(--brand-purple) !important;
-    }
-    [data-testid="stCheckbox"],
-    [data-testid="stCheckbox"] *,
-    [data-testid="stCheckbox"] label,
-    [data-testid="stCheckbox"] label > div,
-    [data-testid="stCheckbox"] label > div > div,
-    [data-testid="stCheckbox"] [aria-selected="true"] {
-        background-color: transparent !important;
-        color: var(--brand-lilac) !important;
-    }
-    [data-testid="stCheckbox"] [role="checkbox"][aria-checked="true"],
-    [data-testid="stCheckbox"] input:checked + div {
-        background-color: var(--brand-purple) !important;
-        border-color: var(--brand-purple) !important;
-    }
-    [data-testid="stCheckbox"] svg,
-    [data-testid="stCheckbox"] svg path {
-        color: var(--brand-purple) !important;
-        fill: var(--brand-purple) !important;
-    }
-    [data-baseweb="tab-highlight"] {
-        background-color: var(--brand-purple-light) !important;
-    }
-    [data-baseweb="tab"][aria-selected="true"] {
-        color: var(--brand-purple-light) !important;
-        background-color: transparent !important;
-    }
-    a, [data-testid="stMetricValue"] {
-        color: var(--brand-purple-light) !important;
-    }
-    [data-testid="stProgressBar"] > div > div {
-        background-color: var(--brand-purple) !important;
-    }
-    @media (max-width: 640px) {
-        .stMainBlockContainer, .block-container {
-            padding-left: 1rem;
-            padding-right: 1rem;
-            padding-top: 2rem;
-        }
-        h1 {
-            font-size: 1.75rem !important;
-        }
-        .stButton > button, .stFormSubmitButton > button {
-            min-height: 2.75rem;
-        }
-        [data-baseweb="tab-list"] {
-            gap: 1rem;
-            overflow-x: auto;
-        }
-        [data-baseweb="tab"] {
-            flex-shrink: 0;
-        }
+    .stMainBlockContainer, .block-container {max-width:1160px;padding:4rem 1.5rem 4rem;}
+    h1 {font-size:1.85rem!important;letter-spacing:-.7px;}
+    [data-testid="stHeading"] h1 {padding-top:0;padding-bottom:.5rem;}
+    [class*="st-key-card_"] {background:white;border-color:#e8e1ef!important;border-radius:16px;box-shadow:0 8px 30px #34204408;}
+    h2 {font-size:1.3rem!important;} h3 {font-size:1.05rem!important;}
+    [data-testid="stHeader"] {background:rgba(247,245,250,.94);}
+    .mimoria-header {display:grid;grid-template-columns:40px 1fr 40px;align-items:center;
+        min-height:90px;background:white;border-bottom:1px solid #e8e1ef;margin-bottom:12px;}
+    .mimoria-header h2 {text-align:center;font-size:1.35rem!important;margin:0;padding:0;}
+    .mimoria-header h2 span {color:#7344b1;}
+    [data-testid="stVerticalBlockBorderWrapper"]>div {border-color:#e8e1ef!important;border-radius:16px!important;}
+    [data-testid="stForm"], [data-testid="stExpander"], [data-testid="stMetric"] {
+        background:white;border:1px solid #e8e1ef;border-radius:14px;padding:16px;}
+    [data-testid="stMetricValue"] {color:#7344b1;}
+    [data-baseweb="input"], [data-baseweb="select"]>div, [data-baseweb="textarea"] {background:white;border-radius:10px;}
+    .stButton>button, .stFormSubmitButton>button {min-height:44px;border-radius:10px;}
+    [data-testid="stRadio"] [role="radiogroup"][aria-orientation="horizontal"] {
+        display:flex;flex-wrap:nowrap;overflow-x:auto;gap:6px;padding:8px 0 16px;
+        border-bottom:1px solid #e8e1ef;margin-bottom:12px;}
+    [data-testid="stRadio"] [role="radiogroup"][aria-orientation="horizontal"] label {
+        flex-shrink:0;margin:0;padding:10px 14px;border-radius:10px;min-height:44px;}
+    [data-testid="stRadio"] [role="radiogroup"][aria-orientation="horizontal"] label:has(input:checked) {background:#f0e9f9;color:#7344b1;}
+    [data-testid="stRadio"] [role="radiogroup"][aria-orientation="horizontal"] label>div>div:first-child:not([data-testid="stMarkdownContainer"]) {display:none;}
+    [data-testid="stRadio"] [role="radiogroup"][aria-orientation="horizontal"] p {white-space:nowrap;font-weight:600;font-size:.9rem;}
+    .st-key-primary_nav .st-key-main_navigation {max-width:100%;overflow-x:auto;}
+    .st-key-primary_nav [data-testid="stButtonGroup"] {overflow-x:auto;padding:8px 0 16px;}
+    .st-key-primary_nav [data-testid="stButtonGroup"]>div {flex-wrap:nowrap;}
+    .st-key-primary_nav button {background:#7344b1!important;color:white!important;
+        border:1px solid #7344b1!important;border-radius:10px!important;
+        min-height:44px;padding:10px 16px;white-space:nowrap;flex-shrink:0;}
+    .st-key-primary_nav button p {color:white!important;font-weight:600;}
+    .st-key-primary_nav button:hover {background:#63369f!important;}
+    .st-key-primary_nav button[aria-pressed="true"], .st-key-primary_nav button[aria-checked="true"] {background:#4e267e!important;
+        border-color:#4e267e!important;box-shadow:0 0 0 2px #d8c5ee;}
+    .st-key-stock_nav [role="radiogroup"] {gap:8px;flex-wrap:wrap;}
+    .st-key-stock_nav button {background:white!important;color:#7344b1!important;
+        border:1px solid #d8c5ee!important;border-radius:12px!important;min-height:46px;padding:10px 16px;}
+    .st-key-stock_nav button p {font-weight:600;}
+    .st-key-stock_nav button:hover {background:#f0e9f9!important;}
+    .st-key-stock_nav button[aria-checked="true"], .st-key-stock_nav button[aria-pressed="true"] {
+        background:#7344b1!important;color:white!important;border-color:#7344b1!important;}
+    @media(max-width:640px){
+      .st-key-stock_nav [role="radiogroup"] {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));}
+      .st-key-stock_nav button {width:100%;padding:10px 8px;}
+      .st-key-stock_nav button p {white-space:normal;font-size:.8rem;}
+
+      .stMainBlockContainer,.block-container {padding:3.5rem 1rem 3rem;}
+      .mimoria-header {min-height:76px;}
+      .mimoria-header h2 {font-size:1.1rem!important;}
+      h1 {font-size:1.5rem!important;}
+      [data-testid="stRadio"] [role="radiogroup"][aria-orientation="horizontal"] label {padding:10px 11px;}
+      [data-baseweb="tab-list"] {overflow-x:auto;gap:1rem;}
+      [data-baseweb="tab"] {flex-shrink:0;}
     }
     </style>
-    """,
-    unsafe_allow_html=True,
+    """, unsafe_allow_html=True,
 )
 
 
@@ -245,6 +217,24 @@ def query_page() -> None:
     if search:
         mask = products.astype(str).apply(lambda column: column.str.contains(search, case=False, na=False)).any(axis=1)
         products = products[mask]
+    if st.radio('Visualização', ['Cartões', 'Tabela'], horizontal=True, label_visibility='collapsed') == 'Cartões':
+        from views.production import money, jump
+        columns = st.columns(3)
+        for index, (_, product) in enumerate(products.iterrows()):
+            with columns[index % 3], st.container(border=True, key="card_product_"+str(product["id_produto"])):
+                if product.get('imagem_url'):
+                    st.image(str(product['imagem_url']), use_container_width=True)
+                st.caption(str(product['id_produto'])+' · '+str(product.get('Categoria', '')))
+                st.subheader(str(product['nome_produto']))
+                st.metric('Preço de venda', money(product['Preco']))
+                st.caption('Custo cadastrado: '+money(product['Custo']))
+                def open_recipe(identifier=str(product['id_produto'])):
+                    st.session_state.cost_product = identifier
+                    jump('🧾 Ficha e preço', 'Ficha e preço')
+                st.button('Ficha e preço →', key='open_product_'+str(product['id_produto']), on_click=open_recipe)
+        if products.empty:
+            st.info('Nenhum produto encontrado.')
+        return
     st.dataframe(
         products,
         use_container_width=True,
@@ -372,27 +362,63 @@ if logo_path.exists():
     logo_data = b64encode(logo_path.read_bytes()).decode("ascii")
     logo_html = f'<img src="data:image/png;base64,{logo_data}" alt="MimoriaLab" style="width:40px;height:auto;">'
 st.markdown(
-    '<header style="display:grid;grid-template-columns:40px minmax(0,1fr) 40px;align-items:center;gap:8px;'
-    'min-height:88px;padding:16px 0;margin-bottom:32px;box-sizing:border-box;">'
-    f'<span>{logo_html}</span>'
-    '<h2 style="text-align:center;font-size:clamp(1rem,4vw,1.5rem);margin:0;padding:0;">Controle MimoriaLab</h2>'
-    '<span aria-hidden="true"></span></header>',
-    unsafe_allow_html=True,
+    '<header class="mimoria-header">'
+    f'<span>{logo_html}</span><h2>Controle <span>MimoriaLab</span></h2>'
+    '<span aria-hidden="true"></span></header>', unsafe_allow_html=True,
 )
 
-navigation_pages = ["🔎 Consultar Produtos", "📝 Cadastrar produto", "⚙️ Editar ou excluir", "🧩 Catálogos auxiliares"]
-if st.session_state.get("page") == "Dashboard":
-    st.session_state.page = "🔎 Consultar Produtos"
-if st.session_state.get("page") not in navigation_pages:
-    st.session_state.page = "🔎 Consultar Produtos"
-st.selectbox("O que você quer fazer?", navigation_pages, key="page")
-page = st.session_state.page
+navigation = {
+    "Início": "🏠 Início",
+    "Produtos": "🔎 Consultar Produtos",
+    "Matérias-primas": "📦 Matérias-primas e estoque",
+    "Ficha e preço": "🧾 Ficha e preço",
+    "Custos de produção": "⏱️ Custos de produção",
+    "Cadastros": "🧩 Catálogos auxiliares",
+}
+product_routes = {"Consultar": "🔎 Consultar Produtos", "Cadastrar": "📝 Cadastrar produto", "Editar ou excluir": "⚙️ Editar ou excluir"}
+# Keep the route outside widget-owned keys: Streamlit cleans up widget state
+# when a control disappears, and changing defaults can recreate controls.
+valid_routes = list(navigation.values())+list(product_routes.values())
+if '_active_page' not in st.session_state:
+    st.session_state._active_page = st.session_state.get('page', '🏠 Início')
+if st.session_state._active_page not in valid_routes:
+    st.session_state._active_page = '🏠 Início'
+current = next((label for label, route in navigation.items() if route == st.session_state._active_page), 'Produtos')
+if st.session_state.get('main_navigation') not in navigation:
+    st.session_state.main_navigation = current
+
+def change_navigation():
+    label = st.session_state.main_navigation
+    if label is None:
+        label = next((k for k, v in navigation.items() if v == st.session_state._active_page), 'Produtos')
+        st.session_state.main_navigation = label
+    st.session_state._active_page = navigation[label]
+    if label == 'Produtos':
+        st.session_state.product_action = 'Consultar'
+
+def change_product_action():
+    st.session_state._active_page = product_routes[st.session_state.product_action]
+
+with st.container(key='primary_nav'):
+    st.pills('Navegação principal', list(navigation), selection_mode='single',
+             key='main_navigation', label_visibility='collapsed', on_change=change_navigation)
+if st.session_state._active_page in product_routes.values():
+    if st.session_state.get('product_action') not in product_routes:
+        st.session_state.product_action = next(label for label, route in product_routes.items() if route == st.session_state._active_page)
+    st.radio('Área de produtos', list(product_routes), horizontal=True,
+             key='product_action', label_visibility='collapsed', on_change=change_product_action)
+page = st.session_state._active_page
+st.session_state.page = page  # compatibility with existing links and sessions
 try:
     {
         "🔎 Consultar Produtos": dashboard,
         "📝 Cadastrar produto": register_page,
         "⚙️ Editar ou excluir": manage_page,
         "🧩 Catálogos auxiliares": auxiliary_page,
+        "📦 Matérias-primas e estoque": inventory_page,
+        "🏠 Início": home_page,
+        "🧾 Ficha e preço": recipe_page,
+        "⏱️ Custos de produção": costs_page,
     }[page]()
-except SheetsError as exc:
+except (SheetsError, StorageError, ValueError) as exc:
     st.error(str(exc))

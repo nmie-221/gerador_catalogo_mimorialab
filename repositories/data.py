@@ -156,6 +156,13 @@ def edit_product(product_id: str, name: str, category_id: str, size_id: str, col
 
 
 def delete_product(product_id: str) -> None:
+    # Avoid reusing a deleted product ID for a recipe or production history.
+    import streamlit as st
+    if 'aws' in st.secrets:
+        from repositories.production import product_costs
+        costs = product_costs(product_id)
+        if costs.get('recipe') or costs.get('platforms') or costs.get('has_production'):
+            raise ValueError("Produto vinculado a ficha, plataformas ou histórico de produção: exclusão bloqueada para preservar os dados.")
     products = table("produtos")
     matches = products.index[products["id_produto"].astype(str) == str(product_id)].tolist()
     if not matches:
