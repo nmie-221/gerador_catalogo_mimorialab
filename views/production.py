@@ -105,7 +105,21 @@ def inventory_page():
     st.caption('Compra, marca, custo por uso e saldo em um só lugar.')
     notice()
     items = repo.materials()
-    section = st.radio('Área de estoque', ['Saldo e custos', 'Cadastrar matéria-prima', 'Editar matéria-prima', 'Registrar entrada', 'Perda ou ajuste', 'Histórico'], horizontal=True)
+    sections = ['Saldo e custos', 'Cadastrar matéria-prima', 'Editar matéria-prima', 'Registrar entrada', 'Perda ou ajuste', 'Histórico']
+    if st.session_state.get('_inventory_section') not in sections:
+        st.session_state._inventory_section = sections[0]
+    if st.session_state.get('inventory_section') not in sections:
+        st.session_state.inventory_section = st.session_state._inventory_section
+
+    def select_inventory_section():
+        if st.session_state.inventory_section is None:
+            st.session_state.inventory_section = st.session_state._inventory_section
+        st.session_state._inventory_section = st.session_state.inventory_section
+
+    with st.container(key='stock_nav'):
+        st.pills('Área de estoque', sections, selection_mode='single', key='inventory_section',
+                 on_change=select_inventory_section, label_visibility='collapsed')
+    section = st.session_state._inventory_section
     if section == 'Cadastrar matéria-prima':
         with st.form('new_material', clear_on_submit=False):
             data = dict(

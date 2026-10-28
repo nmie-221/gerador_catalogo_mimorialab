@@ -51,7 +51,18 @@ st.markdown(
     .st-key-primary_nav button:hover {background:#63369f!important;}
     .st-key-primary_nav button[aria-pressed="true"], .st-key-primary_nav button[aria-checked="true"] {background:#4e267e!important;
         border-color:#4e267e!important;box-shadow:0 0 0 2px #d8c5ee;}
+    .st-key-stock_nav [role="radiogroup"] {gap:8px;flex-wrap:wrap;}
+    .st-key-stock_nav button {background:white!important;color:#7344b1!important;
+        border:1px solid #d8c5ee!important;border-radius:12px!important;min-height:46px;padding:10px 16px;}
+    .st-key-stock_nav button p {font-weight:600;}
+    .st-key-stock_nav button:hover {background:#f0e9f9!important;}
+    .st-key-stock_nav button[aria-checked="true"], .st-key-stock_nav button[aria-pressed="true"] {
+        background:#7344b1!important;color:white!important;border-color:#7344b1!important;}
     @media(max-width:640px){
+      .st-key-stock_nav [role="radiogroup"] {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));}
+      .st-key-stock_nav button {width:100%;padding:10px 8px;}
+      .st-key-stock_nav button p {white-space:normal;font-size:.8rem;}
+
       .stMainBlockContainer,.block-container {padding:3.5rem 1rem 3rem;}
       .mimoria-header {min-height:76px;}
       .mimoria-header h2 {font-size:1.1rem!important;}

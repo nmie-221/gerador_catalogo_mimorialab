@@ -199,7 +199,7 @@ class ProductionTests(unittest.TestCase):
     def test_material_entry_recipe_platform_price_and_production_forms(self):
         app = self.ui_app()
         self.navigate(app, 'Matérias-primas')
-        self.field(app, 'radio', 'Área de estoque').set_value('Cadastrar matéria-prima').run()
+        next(w for w in app.get('button_group') if w.key == 'inventory_section').set_value('Cadastrar matéria-prima').run()
         self.field(app, 'text_input', 'Nome').set_value('Papel teste')
         self.field(app, 'text_input', 'Marca').set_value('Minha marca livre')
         self.field(app, 'number_input', 'Preço de uma embalagem (R$)').set_value(35.)
@@ -207,7 +207,7 @@ class ProductionTests(unittest.TestCase):
         self.assertEqual(app.session_state['page'], '📦 Matérias-primas e estoque')
         self.assertEqual(repo.materials()[0]['brand'], 'Minha marca livre')
         mid = repo.materials()[0]['SK']
-        self.field(app, 'radio', 'Área de estoque').set_value('Registrar entrada').run()
+        next(w for w in app.get('button_group') if w.key == 'inventory_section').set_value('Registrar entrada').run()
         self.field(app, 'number_input', 'Embalagens compradas').set_value(2.)
         self.click(app, 'Confirmar movimentação')
         self.assertEqual(store.get(repo.MATERIALS, mid)['stock'], 1000)
