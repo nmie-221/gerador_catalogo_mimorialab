@@ -143,7 +143,7 @@ def inventory_page():
             st.info('Ainda não há movimentações.')
         return
     if not items:
-        st.info('Cadastre sua primeira matéria-prima. Os dados desta área são salvos no DynamoDB.')
+        st.info('Cadastre sua primeira matéria-prima. Os dados desta área são salvos na base de dados.')
         return
     if section == 'Saldo e custos':
         search = st.text_input('Buscar material ou marca')
