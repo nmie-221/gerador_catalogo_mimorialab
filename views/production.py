@@ -126,7 +126,7 @@ def inventory_page():
                 name=st.text_input('Nome'),
                 brand=st.text_input('Marca'),
                 pack=suggested_input('Unidade de compra', PURCHASE_UNITS, [m['pack'] for m in items], 'Resma'),
-                per=suggested_input('Quantidade de uso por embalagem', ['1', '10', '20', '50', '100', '250', '500', '1000'], current='500'),
+                per=st.number_input('Quantidade de uso por embalagem', min_value=0.000001, value=500., step=1., format='%g'),
                 unit=suggested_input('Unidade de uso', USAGE_UNITS, [m['unit'] for m in items], 'folha'),
                 price=n('Preço de uma embalagem (R$)'), minimum=n('Estoque mínimo na unidade de uso'), stock=0, active=True,
             )
