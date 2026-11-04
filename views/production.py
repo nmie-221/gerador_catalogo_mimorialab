@@ -44,7 +44,7 @@ def costs_page():
     st.title('Custos de produção')
     notice()
     config = repo.settings()
-    section = st.selectbox('Configuração', ['Hora de mão de obra', 'Custo por impressão'], key='costs_section')
+    section = st.selectbox('Configuração', ['Hora de mão de obra', 'Custo por impressão', 'Taxas das plataformas'], key='costs_section')
     if section == 'Hora de mão de obra':
         if 'costs_hour_mode' not in st.session_state:
             st.session_state.costs_hour_mode = 'Informar valor da hora' if config['hour_mode'] == 'direct' else 'Calcular pela remuneração mensal'
@@ -62,6 +62,27 @@ def costs_page():
                 action(lambda: repo.save_settings(data), 'Valor da hora salvo.')
         st.metric('Valor da hora cadastrado', money(repo.hourly(config)))
         st.info('Na ficha técnica, informe o tempo de produção por unidade em minutos.')
+    elif section == 'Taxas das plataformas':
+        st.subheader('Taxas padrão para novos produtos')
+        st.caption('Os valores são editáveis e servem como referência inicial. Confira as tarifas vigentes na plataforma antes de precificar.')
+        defaults = config.get('marketplace_defaults', [])
+        by_name = {p['name']: p for p in defaults}
+        names = list(dict.fromkeys(['Mercado Livre', 'Shopee'] + list(by_name)))
+        with st.form(f"marketplace_defaults_{config['revision']}"):
+            updated_platforms = []
+            for name in names:
+                current = by_name.get(name, {})
+                with st.expander(name, expanded=True):
+                    cols = st.columns(3)
+                    commission = cols[0].number_input('Comissão (%)', min_value=0., max_value=99.99, value=float(current.get('commission', 0)), key='default_commission_'+name)
+                    fixed = cols[1].number_input('Tarifa fixa (R$)', min_value=0., value=float(current.get('fixed', 0)), key='default_fixed_'+name)
+                    freight = cols[2].number_input('Frete reservado (R$)', min_value=0., value=float(current.get('freight', 0)), key='default_freight_'+name)
+                    updated_platforms.append(dict(name=name, commission=commission, fixed=fixed, freight=freight))
+            if st.form_submit_button('Salvar taxas padrão'):
+                updated = deepcopy(config)
+                updated['marketplace_defaults'] = updated_platforms
+                action(lambda: repo.save_settings(updated), 'Taxas padrão salvas.')
+        st.info('As tarifas variáveis por faixa de preço devem ser conferidas antes de aplicar o preço. As taxas padrão não alteram fichas já cadastradas.')
     else:
         profiles = config['prints']
         identifiers = ['new']+[p['id'] for p in profiles]
@@ -261,6 +282,11 @@ def recipe_page():
                         else:
                             updated['platforms'][index] = dict(id=platform['id'], **edited)
                         action(lambda: repo.save_product_costs(updated), 'Taxas atualizadas apenas neste produto.')
+        defaults = [p for p in config.get('marketplace_defaults', []) if p['name'].casefold() not in {v['name'].casefold() for v in data['platforms']}]
+        if defaults and st.button('Adicionar plataformas padrão a este produto', key='apply_platform_defaults_'+pid):
+            updated = deepcopy(data)
+            updated['platforms'].extend(dict(id=uuid4().hex, **p) for p in defaults)
+            action(lambda: repo.save_product_costs(updated), 'Plataformas padrão adicionadas ao produto.')
         with st.expander('Adicionar plataforma ao produto'):
             with st.form(f"new_platform_{pid}_{data['revision']}"):
                 platform = platform_fields(dict(name='', commission=0, fixed=0, freight=0))

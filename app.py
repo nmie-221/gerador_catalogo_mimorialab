@@ -143,11 +143,18 @@ def product_form(values: dict | None = None, form_key: str = "new_product", befo
 
 
 def marketplace_simulator() -> None:
+    from repositories.production import settings
+    try:
+        defaults = {p['name'].casefold(): p for p in settings().get('marketplace_defaults', [])}
+    except StorageError:
+        defaults = {}
+    ml = defaults.get('mercado livre', {})
+    shopee = defaults.get('shopee', {})
     simulation_fields = st.columns(4)
     cost_text = simulation_fields[0].text_input("Custo (R$)", value="0.00", key="new_marketplace_cost")
     margin_text = simulation_fields[1].text_input("Margem de lucro (%)", value="30.00", key="new_marketplace_margin")
-    mercado_livre_fee_text = simulation_fields[2].text_input("Taxa Mercado Livre (%)", value="20.00", key="new_mercado_livre_fee")
-    shopee_fee_text = simulation_fields[3].text_input("Taxa Shopee (%)", value="14.00", key="new_shopee_fee")
+    mercado_livre_fee_text = simulation_fields[2].text_input("Taxa Mercado Livre (%)", value=f"{float(ml.get('commission', 20)):.2f}", key="new_mercado_livre_fee")
+    shopee_fee_text = simulation_fields[3].text_input("Taxa Shopee (%)", value=f"{float(shopee.get('commission', 14)):.2f}", key="new_shopee_fee")
 
     def parse_simulation_value(value: str) -> float:
         try:
@@ -160,9 +167,14 @@ def marketplace_simulator() -> None:
     profit_margin = parse_simulation_value(margin_text)
     mercado_livre_fee = min(parse_simulation_value(mercado_livre_fee_text), 99.99)
     shopee_fee = min(parse_simulation_value(shopee_fee_text), 99.99)
-    base_price = cost * (1 + profit_margin / 100)
-    mercado_livre_price = base_price / (1 - mercado_livre_fee / 100)
-    shopee_price = base_price / (1 - shopee_fee / 100)
+    from utils.pricing import quote
+    try:
+        mercado_livre_price = float(quote(cost, mercado_livre_fee, ml.get('fixed', 0), ml.get('freight', 0), profit_margin)['price'])
+        shopee_price = float(quote(cost, shopee_fee, shopee.get('fixed', 0), shopee.get('freight', 0), profit_margin)['price'])
+    except ValueError as exc:
+        st.error(str(exc))
+        return
+    st.caption("Simulação com comissão, tarifa fixa e frete padrão configurados em Custos de produção. Confirme tarifas por faixa de preço.")
     result_columns = st.columns(2)
     result_columns[0].metric("Preço sugerido Mercado Livre", f"R$ {mercado_livre_price:.2f}")
     result_columns[1].metric("Preço sugerido Shopee", f"R$ {shopee_price:.2f}")

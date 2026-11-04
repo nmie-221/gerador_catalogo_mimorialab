@@ -17,7 +17,7 @@ def timestamp():
 
 
 def settings():
-    return store.get(COSTS, 'SETTINGS') or dict(PK=COSTS, SK='SETTINGS', revision=0, hour_mode='direct', monthly=0, hours=100, hourly=0, prints=[])
+    return store.get(COSTS, 'SETTINGS') or dict(PK=COSTS, SK='SETTINGS', revision=0, hour_mode='direct', monthly=0, hours=100, hourly=0, prints=[], marketplace_defaults=[])
 
 
 def save_settings(data):
@@ -37,6 +37,18 @@ def save_settings(data):
             raise ValueError('O rendimento deve ser inteiro.')
     if len({p['name'].strip().casefold() for p in value['prints']}) != len(value['prints']):
         raise ValueError('Os perfis de impressão devem ter nomes diferentes.')
+    defaults = value.get('marketplace_defaults', [])
+    names = set()
+    for platform in defaults:
+        name = str(platform.get('name', '')).strip()
+        if not name or name.casefold() in names:
+            raise ValueError('Cada plataforma deve ter um nome único.')
+        names.add(name.casefold())
+        for field in ('commission', 'fixed', 'freight'):
+            platform[field] = decimal(platform.get(field, 0))
+        if platform['commission'] >= 100:
+            raise ValueError('Comissão deve ser menor que 100%.')
+    value['marketplace_defaults'] = defaults
     expected = value['revision'] or None
     value['revision'] += 1
     store.put(value, expected)
