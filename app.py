@@ -10,6 +10,7 @@ from repositories.data import active, add_domain, add_product, catalog, delete_d
 from services.auth import is_authenticated, login_screen
 from services.google_sheets import SheetsError
 from utils.validators import number, required_fields
+from utils.total_cost import estimate_for_product
 from views.production import inventory_page, costs_page, recipe_page, home_page
 from services.dynamodb import StorageError
 
@@ -97,7 +98,7 @@ def domain_select(frame: pd.DataFrame, label: str, key: str, selected_id: str | 
     return options[selected]
 
 
-def product_form(values: dict | None = None, form_key: str = "new_product", before_pricing=None) -> tuple:
+def product_form(values: dict | None = None, form_key: str = "new_product", before_pricing=None, product_id=None) -> tuple:
     values = values or {}
     def decimal_text(value: object) -> str:
         try:
@@ -130,6 +131,13 @@ def product_form(values: dict | None = None, form_key: str = "new_product", befo
             cost = st.text_input("Custo", value=decimal_text(values.get("custo", st.session_state.get(f"{form_key}_cost", 0))), key=f"{form_key}_cost")
             barcode = st.text_input("Código de barras (opcional)", value=str(values.get("codigo_barras", "")))
             image_url = st.text_input("URL da imagem (opcional)", value=str(values.get("imagem_url", "")))
+            try:
+                estimate = estimate_for_product(product_id, number(cost, "O custo"), number(price, "O preço"))
+                st.caption(f"Custo total estimado (plataforma mais cara): R$ {estimate['total']:.2f} | {estimate['platform']}")
+                st.caption(f"Produção: R$ {estimate['production']:.2f} | Frete: R$ {estimate['freight']:.2f} | Tarifa: R$ {estimate['fixed']:.2f} | Comissão: R$ {estimate['commission']:.2f}")
+                st.caption(f"Lucro estimado: R$ {estimate['profit']:.2f} | Margem: {estimate['margin']:.2f}%")
+            except (ValueError, KeyError, StorageError) as exc:
+                st.warning(f"Não foi possível estimar o custo total: {exc}")
             submitted = st.form_submit_button("Salvar")
     return submitted, name, category, size, color, material, price, cost, kit, barcode, image_url
 
@@ -261,7 +269,7 @@ def manage_page() -> None:
         selected_label = st.selectbox("Produto para editar", list(options), key="edit_selected_product")
         selected_id = options[selected_label]
         selected = products[products["id_produto"].astype(str) == str(selected_id)].iloc[0].to_dict()
-        submitted, name, category, size, color, material, price, cost, kit, barcode, image_url = product_form(selected, f"edit_product_{selected_id}")
+        submitted, name, category, size, color, material, price, cost, kit, barcode, image_url = product_form(selected, f"edit_product_{selected_id}", product_id=selected_id)
         if submitted:
             missing = required_fields({
                 "Nome do produto": name,
