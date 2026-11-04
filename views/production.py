@@ -282,6 +282,11 @@ def recipe_page():
                         else:
                             updated['platforms'][index] = dict(id=platform['id'], **edited)
                         action(lambda: repo.save_product_costs(updated), 'Taxas atualizadas apenas neste produto.')
+        defaults = [p for p in config.get('marketplace_defaults', []) if p['name'].casefold() not in {v['name'].casefold() for v in data['platforms']}]
+        if defaults and st.button('Adicionar plataformas padrão a este produto', key='apply_platform_defaults_'+pid):
+            updated = deepcopy(data)
+            updated['platforms'].extend(dict(id=uuid4().hex, **p) for p in defaults)
+            action(lambda: repo.save_product_costs(updated), 'Plataformas padrão adicionadas ao produto.')
         with st.expander('Adicionar plataforma ao produto'):
             with st.form(f"new_platform_{pid}_{data['revision']}"):
                 platform = platform_fields(dict(name='', commission=0, fixed=0, freight=0))
