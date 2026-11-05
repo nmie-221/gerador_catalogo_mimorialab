@@ -128,6 +128,19 @@ class CatalogProductTests(DynamoCase):
             get.assert_not_called()
         self.assertIsNone(result['products'])
 
+    def test_import_products_from_sheet_with_old_columns(self):
+        import pandas as pd
+        from services.google_sheets import HEADERS
+        old = [dict(id_produto='P007', nome_produto='Antigo', categoria='CAT001', tamanho='TAM001', cor='COR001', material='MAT001',
+                    preco=12.92, custo=8.3, qtd_kit='KIT001', sku='007OP', codigo_barras='00123', imagem_url='')]
+        frame = pd.DataFrame(old, columns=HEADERS['PRODUTOS']).fillna('')  # as read from a sheet without the new headers
+        self.assertEqual(catalog_dynamo.import_sheet('produtos', frame, dry_run=True)['pending'], 1)
+        catalog_dynamo.import_sheet('produtos', frame, dry_run=False)
+        product = data.table('produtos').iloc[0]
+        self.assertEqual((product['id_produto'], float(product['preco']), product['codigo_barras']), ('P007', 12.92, '00123'))
+        self.assertEqual(catalog_dynamo.import_sheet('produtos', frame, dry_run=True)['pending'], 0)
+        self.assertEqual(catalog_dynamo.diagnose(10)['legacy'], {k: 0 for k in ['categorias', 'tamanhos', 'cores', 'materiais']})
+
 
 class FiscalTests(DynamoCase):
     def test_defaults_are_seeded_and_single(self):

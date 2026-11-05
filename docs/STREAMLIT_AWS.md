@@ -90,3 +90,9 @@ streamlit run app.py
 ```
 
 Os testes de DynamoDB usam Moto, com uma tabela AWS simulada. Eles não acessam a conta real. A publicação e as permissões reais devem ser verificadas no Streamlit após configurar o usuário IAM.
+
+## Capacidade da tabela
+
+A tabela usa o modo **sob demanda** (`PAY_PER_REQUEST`). No modo provisionado com 1 unidade de leitura, a lista de produtos e as leituras em lote são recusadas por limite de capacidade (`ProvisionedThroughputExceededException`). Com o volume deste app, o custo sob demanda é de centavos por mês.
+
+Para aplicar: rode o workflow **AWS infra** no GitHub Actions com "executar_apply" marcado. Ou, no console: **DynamoDB › Tabelas › mimorialab-dev › Configurações adicionais › Capacidade de leitura/gravação › Editar › Sob demanda**. A AWS permite trocar o modo de cobrança poucas vezes por dia.

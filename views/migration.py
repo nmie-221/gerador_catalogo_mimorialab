@@ -9,16 +9,21 @@ KINDS = ("categorias", "tamanhos", "cores", "materiais", "kits", "produtos")
 
 def migration_page():
     st.title("Migração do catálogo para DynamoDB")
-    st.warning("Antes de migrar, interrompa edições no Google Sheets e faça uma cópia da planilha.")
     if catalog.enabled():
         st.success("O catálogo já está configurado para usar o DynamoDB.")
         diagnostics()
-        return
+        st.divider()
+        st.subheader("Importar da planilha o que ainda falta")
+        st.caption("Importa apenas registros que não existem no DynamoDB. Nada que já está lá é alterado.")
+        if not st.toggle("Mostrar importação da planilha", key="show_sheet_import"):
+            return
+    st.warning("Antes de migrar, interrompa edições no Google Sheets e faça uma cópia da planilha.")
     if not st.secrets.get("aws"):
         st.error("Configure os Secrets da AWS antes de continuar.")
         return
     try:
-        frames = {kind: read_sheet(SHEETS[kind]) for kind in KINDS}
+        # Columns added after the sheet was created come back empty, never NaN.
+        frames = {kind: read_sheet(SHEETS[kind]).fillna("") for kind in KINDS}
         products = frames["produtos"]
         for kind in KINDS[:-1]:
             values = set(frames[kind]["id"].astype(str))
@@ -42,12 +47,13 @@ def migration_page():
                 catalog.import_sheet(kind, frames[kind], dry_run=False)
             verified = {kind: catalog.read(kind) for kind in KINDS}
             for kind in KINDS:
-                if len(verified[kind]) != len(frames[kind]):
-                    raise ValueError(f"Quantidade divergente em {kind}")
+                # Records created in the app after the cutover may exist only in DynamoDB.
                 field = "id_produto" if kind == "produtos" else "id"
-                if set(verified[kind][field].astype(str)) != set(frames[kind][field].astype(str)):
-                    raise ValueError(f"IDs divergentes em {kind}")
-            st.success("Importação concluída e IDs conferidos. Ative [catalog] backend = 'dynamodb' nos Secrets e reinicie o app.")
+                missing = set(frames[kind][field].astype(str)) - set(verified[kind][field].astype(str))
+                if missing:
+                    raise ValueError(f"IDs da planilha ausentes no DynamoDB em {kind}: {sorted(missing)}")
+            st.session_state.pop("catalog_diagnosis", None)
+            st.success("Importação concluída e IDs conferidos." + ("" if catalog.enabled() else " Ative [catalog] backend = 'dynamodb' nos Secrets e reinicie o app."))
         except (ValueError, db.StorageError) as exc:
             st.error(f"Importação interrompida: {exc}. Corrija e execute novamente; registros já gravados serão preservados.")
 
@@ -73,7 +79,7 @@ def diagnostics():
         st.warning("A política AWS ainda não tem dynamodb:BatchGetItem, então não foi possível procurar produtos fora da lista. "
                    "Inclua essa permissão (ela também deixa o app mais rápido) e execute de novo.")
     else:
-        st.write(f"**Produtos encontrados (P001 a P300):** {len(result['products'])}"
+        st.write(f"**Produtos encontrados (P001 a P060):** {len(result['products'])}"
                  + (f" · sem entrada na lista: {', '.join(result['unindexed'])}" if result["unindexed"] else ""))
     legacy = {k: v for k, v in result["legacy"].items() if v}
     if legacy:
