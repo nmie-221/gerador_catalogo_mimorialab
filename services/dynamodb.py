@@ -16,13 +16,18 @@ class ConflictError(StorageError):
     pass
 
 
+@st.cache_resource(show_spinner=False)
+def _connect(region, access_key_id, secret_access_key):
+    # Creating a client costs hundreds of ms; reuse one per set of credentials.
+    return boto3.client('dynamodb', region_name=region, aws_access_key_id=access_key_id,
+                        aws_secret_access_key=secret_access_key,
+                        config=Config(connect_timeout=5, read_timeout=10, retries={'max_attempts': 3}))
+
+
 def _client():
     try:
         config = st.secrets['aws']
-        return boto3.client('dynamodb', region_name=config['region'],
-                            aws_access_key_id=config['access_key_id'],
-                            aws_secret_access_key=config['secret_access_key'],
-                            config=Config(connect_timeout=5, read_timeout=10, retries={'max_attempts': 3})), config['table_name']
+        return _connect(config['region'], config['access_key_id'], config['secret_access_key']), config['table_name']
     except (KeyError, FileNotFoundError) as exc:
         raise StorageError('Configure [aws] nos Secrets do aplicativo principal: region, table_name, access_key_id e secret_access_key.') from exc
 
@@ -117,7 +122,11 @@ def transaction(items, token=None, deletes=()):
         raise _error(exc) from exc
 
 
-def batch_get(keys):
+class BatchDenied(StorageError):
+    pass
+
+
+def batch_get(keys, fallback=True):
     """Read many (PK, SK) pairs, 100 per request, retrying unprocessed keys."""
     unique = list(dict.fromkeys((str(pk), str(sk)) for pk, sk in keys))
     found = {}
@@ -139,6 +148,8 @@ def batch_get(keys):
     except ClientError as exc:
         if exc.response['Error']['Code'] not in ['AccessDeniedException', 'AccessDenied']:
             raise _error(exc) from exc
+        if not fallback:
+            raise BatchDenied('A política AWS não permite dynamodb:BatchGetItem.') from exc
         # Policies created before BatchGetItem was needed still work, only slower.
         found = {}
         for pk, sk in unique:

@@ -119,6 +119,15 @@ class CatalogProductTests(DynamoCase):
         self.assertEqual(sorted(data.table('produtos')['id_produto']), ['P001', 'P002'])
         self.assertIn('COR009', set(data.table('cores')['id']))
 
+    def test_diagnose_without_batch_permission_is_fast_and_explicit(self):
+        from botocore.exceptions import ClientError
+        client, _ = store._client()
+        denied = ClientError({'Error': {'Code': 'AccessDeniedException', 'Message': 'no'}}, 'BatchGetItem')
+        with patch.object(client, 'batch_get_item', side_effect=denied), patch.object(store, 'get') as get:
+            result = catalog_dynamo.diagnose()
+            get.assert_not_called()
+        self.assertIsNone(result['products'])
+
 
 class FiscalTests(DynamoCase):
     def test_defaults_are_seeded_and_single(self):

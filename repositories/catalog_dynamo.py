@@ -30,12 +30,16 @@ def enabled():
 
 def diagnose(max_product=300):
     """Count records per partition the app reads, plus legacy/unindexed data."""
-    report = {"Lista de produtos (" + INDEX + ")": len(db.query(INDEX))}
+    indexed = {item["SK"] for item in db.query(INDEX)}
+    report = {"Lista de produtos (" + INDEX + ")": len(indexed)}
     for kind, pk in DOMAINS.items():
         report[kind + " (" + pk + ")"] = len(db.query(pk))
     legacy = {kind: len(db.query(pk)) for kind, pk in LEGACY_DOMAINS.items()}
-    indexed = {item["SK"] for item in db.query(INDEX)}
-    found = db.batch_get([key("produtos", f"P{i:03d}") for i in range(1, max_product + 1)])
+    try:
+        # Three batched reads; one-by-one reads would take minutes.
+        found = db.batch_get([key("produtos", f"P{i:03d}") for i in range(1, max_product + 1)], fallback=False)
+    except db.BatchDenied:
+        return dict(report=report, legacy=legacy, products=None, unindexed=[])
     details = sorted(pk.rsplit("#", 1)[-1] for pk, _ in found)
     return dict(report=report, legacy=legacy, products=details, unindexed=[p for p in details if p not in indexed])
 
