@@ -34,7 +34,7 @@ def diagnose(max_product=300):
     report = {"Lista de produtos (" + INDEX + ")": len(indexed)}
     for kind, pk in DOMAINS.items():
         report[kind + " (" + pk + ")"] = len(db.query(pk))
-    legacy = {kind: len(db.query(pk)) for kind, pk in LEGACY_DOMAINS.items()}
+    legacy = {kind: len(db.query(pk)) for kind, pk in LEGACY_DOMAINS.items() if pk != DOMAINS[kind]}
     try:
         # Three batched reads; one-by-one reads would take minutes.
         found = db.batch_get([key("produtos", f"P{i:03d}") for i in range(1, max_product + 1)], fallback=False)
@@ -58,6 +58,8 @@ def repair():
         except db.ConflictError:
             pass
     for kind, pk in LEGACY_DOMAINS.items():
+        if pk == DOMAINS[kind]:
+            continue  # same partition in both versions (kits)
         for item in db.query(pk):
             copy = dict(item, PK=DOMAINS[kind], SK=str(item.get("id") or item["SK"]))
             copy.setdefault("id", copy["SK"])
@@ -137,7 +139,7 @@ def remove(kind, rid, extra_keys=()):
 def import_sheet(kind, frame, dry_run=True):
     """Validate and import only missing records; never overwrite existing data."""
     if frame.empty:
-        return {"source": 0, "existing": 0, "inserted": 0}
+        return {"source": 0, "existing": 0, "inserted": 0, "pending": 0}
     rows = frame.to_dict("records")
     ids = [identifier(kind, row) for row in rows]
     if not all(ids) or len(ids) != len(set(ids)):
