@@ -53,7 +53,7 @@ def _error(exc):
             if code == 'ConditionalCheckFailedException' or not reasons or any(r.get('Code') in ['ConditionalCheckFailed', 'TransactionConflict'] for r in reasons):
                 return ConflictError('Os dados mudaram em outra sessão ou a operação já foi registrada. Atualize a tela antes de tentar novamente.')
         if code in ['AccessDeniedException', 'AccessDenied']:
-            return StorageError('Acesso AWS negado. A aplicação precisa de GetItem, BatchGetItem, Query, PutItem, DeleteItem e TransactWriteItems na tabela configurada. Veja docs/STREAMLIT_AWS.md.')
+            return StorageError('Acesso AWS negado. A aplicação precisa de GetItem, BatchGetItem, Query, PutItem e DeleteItem na tabela configurada. Veja docs/STREAMLIT_AWS.md.')
         if code == 'ResourceNotFoundException':
             return StorageError('Tabela DynamoDB não encontrada. Confira table_name e a região nos Secrets.')
     return StorageError('Não foi possível acessar o DynamoDB. Confira a conexão, os Secrets e as permissões.')
