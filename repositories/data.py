@@ -5,12 +5,13 @@ from typing import Any
 import pandas as pd
 
 from services.google_sheets import SHEETS, append_rows, delete_row, now_iso, read_sheet, update_row
+from repositories import catalog_dynamo as dynamo
 from utils.sku import build_sku
 from utils.validators import abbreviation, clean, normalize, number, required, unique
 
 
 def table(kind: str) -> pd.DataFrame:
-    return read_sheet(SHEETS[kind]).copy()
+    return dynamo.read(kind) if dynamo.enabled() else read_sheet(SHEETS[kind]).copy()
 
 
 def active(kind: str) -> pd.DataFrame:
@@ -19,7 +20,8 @@ def active(kind: str) -> pd.DataFrame:
 
 
 def fresh_table(kind: str) -> pd.DataFrame:
-    read_sheet.clear()
+    if not dynamo.enabled():
+        read_sheet.clear()
     return table(kind)
 
 
@@ -42,7 +44,11 @@ def add_domain(kind: str, name: str, abbrev: str, enabled: bool) -> None:
     if not unique(frame["nome"], name) or not unique(frame["abreviacao"], abbrev):
         raise ValueError("Nome e abreviacao devem ser unicos dentro do cadastro.")
     prefix = {"categorias": "CAT", "tamanhos": "TAM", "cores": "COR", "materiais": "MAT", "kits": "KIT"}[kind]
-    append_rows(SHEETS[kind], [[_domain_id(kind, prefix), name, abbrev, "Sim" if enabled else "Nao"]])
+    row = [_domain_id(kind, prefix), name, abbrev, "Sim" if enabled else "Nao"]
+    if dynamo.enabled():
+        dynamo.insert(kind, dict(zip(["id", "nome", "abreviacao", "ativo"], row)))
+    else:
+        append_rows(SHEETS[kind], [row])
 
 
 def _lookup(kind: str, identifier: str) -> pd.Series:
@@ -83,14 +89,21 @@ def edit_domain(kind: str, identifier: str, name: str, abbrev: str, enabled: boo
         raise ValueError("Nome e abreviacao devem ser unicos dentro do cadastro.")
     if abbrev != str(frame.iloc[position]["abreviacao"]) and domain_in_use(kind, identifier):
         raise ValueError("A abreviação está vinculada a produtos e não pode ser alterada para preservar os SKUs existentes.")
-    update_row(SHEETS[kind], position + 2, [identifier, name, abbrev, "Sim" if enabled else "Nao"])
+    row = [identifier, name, abbrev, "Sim" if enabled else "Nao"]
+    if dynamo.enabled():
+        dynamo.update(kind, dict(zip(["id", "nome", "abreviacao", "ativo"], row)))
+    else:
+        update_row(SHEETS[kind], position + 2, row)
 
 
 def delete_domain(kind: str, identifier: str) -> None:
     _, position = _domain_record(kind, identifier)
     if domain_in_use(kind, identifier):
         raise ValueError("Este item está vinculado a produtos. Desative-o na edição em vez de excluir.")
-    delete_row(SHEETS[kind], position + 2)
+    if dynamo.enabled():
+        dynamo.remove(kind, identifier)
+    else:
+        delete_row(SHEETS[kind], position + 2)
 
 
 def build_product_sku(product_id: str, category_id: str, size_id: str, color_id: str, material_id: str, kit_id: str) -> str:
@@ -128,7 +141,12 @@ def add_product(name: str, category_id: str, size_id: str, color_id: str, materi
     sku = build_product_sku(product_id, category_id, size_id, color_id, material_id, kit_id)
     if not unique(products["sku"], sku):
         raise ValueError("Ja existe um produto com esse SKU.")
-    append_rows("PRODUTOS", [_product_row(product_id, name, category_id, size_id, color_id, material_id, price, cost, kit_id, barcode, image_url, sku)])
+    row = _product_row(product_id, name, category_id, size_id, color_id, material_id, price, cost, kit_id, barcode, image_url, sku)
+    if dynamo.enabled():
+        from services.google_sheets import HEADERS
+        dynamo.insert("produtos", dict(zip(HEADERS["PRODUTOS"], row)))
+    else:
+        append_rows("PRODUTOS", [row])
     return sku
 
 
@@ -151,7 +169,11 @@ def edit_product(product_id: str, name: str, category_id: str, size_id: str, col
     if not unique(others["sku"], sku):
         raise ValueError("A edicao geraria um SKU que ja existe.")
     row = _product_row(product_id, name, category_id, size_id, color_id, material_id, price, cost, kit_id, barcode, image_url, sku)
-    update_row("PRODUTOS", index + 2, row)
+    if dynamo.enabled():
+        from services.google_sheets import HEADERS
+        dynamo.update("produtos", dict(zip(HEADERS["PRODUTOS"], row)))
+    else:
+        update_row("PRODUTOS", index + 2, row)
     return sku
 
 
@@ -168,7 +190,10 @@ def delete_product(product_id: str) -> None:
     if not matches:
         raise ValueError("Produto nao encontrado.")
     from services.google_sheets import delete_row
-    delete_row("PRODUTOS", matches[0] + 2)
+    if dynamo.enabled():
+        dynamo.remove("produtos", product_id)
+    else:
+        delete_row("PRODUTOS", matches[0] + 2)
 
 
 def catalog() -> pd.DataFrame:
