@@ -8,7 +8,6 @@ import streamlit as st
 from repositories import production as repo
 from repositories.data import table
 from services import dynamodb as store
-from services.google_sheets import update_row
 from utils.pricing import quote
 
 
