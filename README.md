@@ -18,8 +18,9 @@ Aplicação Streamlit para cadastro de produtos usando uma planilha do Google Sh
 5. Use a primeira linha de cada aba como cabeçalho:
 
 ```text
-PRODUTOS: id_produto, nome_produto, categoria, tamanho, cor, material, preco, custo, qtd_kit, sku, codigo_barras, imagem_url
-CATEGORIAS/TAMANHOS/CORES/MATERIAIS/KIT: id, nome, abreviacao, ativo
+PRODUTOS: id_produto, nome_produto, categoria, tamanho, cor, material, preco, custo, qtd_kit, sku, codigo_barras, imagem_url, cfop_estadual, cfop_interestadual, csosn, origem, peso_liquido_g, peso_bruto_g, altura_cm, largura_cm, comprimento_cm, sob_encomenda, dias_producao
+CATEGORIAS: id, nome, abreviacao, ativo, ncm
+TAMANHOS/CORES/MATERIAIS/KIT: id, nome, abreviacao, ativo
 ```
 
 6. Copie `.streamlit/secrets.toml.example` para `.streamlit/secrets.toml`, preenchendo o ID da planilha e os campos da chave JSON.
@@ -58,13 +59,27 @@ Produtos, domínios e SKUs são validados sem diferenciar maiúsculas/minúscula
 
 Produtos podem ser editados e excluídos diretamente na tela **Produtos**. A exclusão remove a linha da aba `PRODUTOS`, conforme o novo modelo da planilha.
 
-## Navegação e código de barras
+## Cadastro de produto em uma única tela
 
-- **Cadastrar produto** contém somente o formulário de inclusão.
-- **Consultar produtos** permite buscar rapidamente por ID, nome, SKU ou código de barras.
-- A coluna `imagem_url` é opcional e deve conter uma URL pública de imagem; ela aparece como miniatura na consulta.
-- **Editar ou excluir** concentra as alterações e exclusões para evitar confusão.
-- O código de barras é opcional e informado manualmente. A geração automática de EAN-13 fica reservada para uma etapa futura.
+**Produtos › Cadastrar** e **Produtos › Editar** usam a mesma tela, com abas:
+
+- **Identificação**: nome, categoria, tamanho, cor, material, kit e imagem. O SKU continua automático.
+- **Ficha técnica (custo)**: matérias-primas consumidas por unidade, tempo de mão de obra, impressão e outros custos (embalagem, brinde etc.). Dá para cadastrar uma matéria-prima nova ali mesmo, já incluída na ficha.
+- **Preço e plataformas**: taxas de cada plataforma (iniciadas com as taxas padrão de *Custos de produção*), custo total, lucro e margem no preço atual e o preço sugerido para a margem desejada.
+- **Fiscal**: CFOP mesmo estado (padrão 5102), CFOP outros estados (padrão 6102), CSOSN (padrão 102) e origem (padrão 0). O **NCM vem da categoria**.
+- **Envio e prazo**: peso líquido, peso bruto com embalagem, dimensões do pacote e dias de produção para produtos sob encomenda.
+
+O custo do produto é sempre a soma da ficha técnica. Ele é recalculado quando o preço de uma matéria-prima muda. O produto e a ficha são salvos juntos, numa única transação do DynamoDB. Produtos antigos que só tinham o custo digitado recebem esse valor como uma linha "Custo informado anteriormente" na ficha, para não perderem o custo nem o contarem duas vezes.
+
+O código de barras saiu da tela. Valores já gravados são preservados.
+
+## Produção
+
+A tela **Produção** registra o que foi produzido e dá baixa nas matérias-primas da ficha técnica, numa única transação. Antes de confirmar, ela mostra quanto de cada material será consumido e quantas unidades dá para produzir com o estoque atual. Não existe estoque de produtos prontos. O histórico guarda a data, a quantidade, o custo unitário da produção e os materiais consumidos.
+
+## Cadastros fiscais
+
+Em **Cadastros › Fiscal** ficam as tabelas de CFOP, CSOSN e origem (no DynamoDB). Cada tabela tem um código padrão, sugerido em novos produtos. O NCM é informado em cada categoria. Confirme os códigos com sua contabilidade.
 
 ## Logotipo
 

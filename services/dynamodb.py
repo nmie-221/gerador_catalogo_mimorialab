@@ -53,7 +53,7 @@ def _error(exc):
             if code == 'ConditionalCheckFailedException' or not reasons or any(r.get('Code') in ['ConditionalCheckFailed', 'TransactionConflict'] for r in reasons):
                 return ConflictError('Os dados mudaram em outra sessão ou a operação já foi registrada. Atualize a tela antes de tentar novamente.')
         if code in ['AccessDeniedException', 'AccessDenied']:
-            return StorageError('Acesso AWS negado. A aplicação precisa de GetItem, Query, PutItem e TransactWriteItems na tabela configurada. Veja docs/STREAMLIT_AWS.md.')
+            return StorageError('Acesso AWS negado. A aplicação precisa de GetItem, BatchGetItem, Query, PutItem, DeleteItem e TransactWriteItems na tabela configurada. Veja docs/STREAMLIT_AWS.md.')
         if code == 'ResourceNotFoundException':
             return StorageError('Tabela DynamoDB não encontrada. Confira table_name e a região nos Secrets.')
     return StorageError('Não foi possível acessar o DynamoDB. Confira a conexão, os Secrets e as permissões.')
@@ -100,14 +100,54 @@ def put(item, expected=None):
         raise _error(exc) from exc
 
 
-def transaction(items, token):
-    if len(items) > 100:
-        raise StorageError('Esta produção ultrapassa o limite de materiais por operação.')
+def transaction(items, token=None, deletes=()):
+    """Atomically put items (with optimistic checks) and delete existing keys."""
+    if len(items) + len(deletes) > 100:
+        raise StorageError('Esta operação ultrapassa o limite de itens por transação.')
     try:
         client, table = _client()
-        client.transact_write_items(TransactItems=[{'Put': {'TableName': table, **write_request(item, expected)}} for item, expected in items], ClientRequestToken=token)
+        requests = [{'Put': {'TableName': table, **write_request(item, expected)}} for item, expected in items]
+        requests += [{'Delete': {'TableName': table, 'Key': _encode({'PK': pk, 'SK': sk}),
+                                 'ConditionExpression': 'attribute_exists(PK)'}} for pk, sk in deletes]
+        args = dict(TransactItems=requests)
+        if token:  # boto3 rejects None; only idempotent operations send a token.
+            args['ClientRequestToken'] = token
+        client.transact_write_items(**args)
     except (ClientError, BotoCoreError) as exc:
         raise _error(exc) from exc
+
+
+def batch_get(keys):
+    """Read many (PK, SK) pairs, 100 per request, retrying unprocessed keys."""
+    unique = list(dict.fromkeys((str(pk), str(sk)) for pk, sk in keys))
+    found = {}
+    try:
+        client, table = _client()
+        for start in range(0, len(unique), 100):
+            pending = {table: {'Keys': [_encode({'PK': pk, 'SK': sk}) for pk, sk in unique[start:start + 100]],
+                               'ConsistentRead': True}}
+            for _ in range(5):
+                response = client.batch_get_item(RequestItems=pending)
+                for raw in response.get('Responses', {}).get(table, []):
+                    item = _decode(raw)
+                    found[(item['PK'], item['SK'])] = item
+                pending = response.get('UnprocessedKeys') or {}
+                if not pending:
+                    break
+            if pending:
+                raise StorageError('O DynamoDB não retornou todos os registros. Tente novamente.')
+    except ClientError as exc:
+        if exc.response['Error']['Code'] not in ['AccessDeniedException', 'AccessDenied']:
+            raise _error(exc) from exc
+        # Policies created before BatchGetItem was needed still work, only slower.
+        found = {}
+        for pk, sk in unique:
+            item = get(pk, sk)
+            if item is not None:
+                found[(pk, sk)] = item
+    except BotoCoreError as exc:
+        raise _error(exc) from exc
+    return found
 
 
 def delete(pk, sk):

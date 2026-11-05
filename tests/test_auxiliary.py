@@ -21,8 +21,9 @@ class AuxiliaryTests(unittest.TestCase):
     def test_edit_and_delete_each_domain_use_correct_sheet_and_row(self):
         for kind in data.DOMAIN_PRODUCT_FIELDS:
             with self.subTest(kind=kind), patch.object(data, "update_row") as update, patch.object(data, "delete_row") as delete:
-                data.edit_domain(kind, "A2", " Novo nome ", "nv", False)
-                update.assert_called_once_with(data.SHEETS[kind], 3, ["A2", "Novo nome", "NV", "Nao"])
+                data.edit_domain(kind, "A2", " Novo nome ", "nv", False, "4820.10.00")
+                expected = ["A2", "Novo nome", "NV", "Nao"] + (["48201000"] if kind == "categorias" else [])
+                update.assert_called_once_with(data.SHEETS[kind], 3, expected)
                 data.delete_domain(kind, "A2")
                 delete.assert_called_once_with(data.SHEETS[kind], 3)
 

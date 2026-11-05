@@ -30,43 +30,49 @@ def record(kind, row):
 
 def read(kind):
     if kind == "produtos":
-        ids = db.query(INDEX)
+        keys = [key(kind, item["SK"]) for item in db.query(INDEX)]
+        details = db.batch_get(keys)
         records = []
-        for item in ids:
-            detail = db.get(*key(kind, item["SK"]))
-            if detail is None:
-                raise db.StorageError("Índice de produtos inconsistente: " + str(item["SK"]))
-            records.append(detail)
+        for pk, sk in keys:
+            if (pk, sk) not in details:
+                raise db.StorageError("Índice de produtos inconsistente: " + pk.rsplit("#", 1)[-1])
+            records.append(details[(pk, sk)])
     else:
         records = db.query(DOMAINS[kind])
     cols = HEADERS[SHEETS[kind]]
     return pd.DataFrame([{col: r.get(col, "") for col in cols} for r in records], columns=cols)
 
 
-def insert(kind, row):
+def insert(kind, row, extra=()):
+    """Insert a record; `extra` (item, expected_revision) pairs are written atomically with it."""
     item = record(kind, row)
     if kind == "produtos":
         rid = identifier(kind, row)
         index = {"PK": INDEX, "SK": rid, "revision": 1}
-        db.transaction([(item, None), (index, None)], None)
+        db.transaction([(item, None), (index, None), *extra])
+    elif extra:
+        db.transaction([(item, None), *extra])
     else:
         db.put(item)
 
 
-def update(kind, row):
+def update(kind, row, extra=()):
     pk, sk = key(kind, identifier(kind, row))
     previous = db.get(pk, sk)
     if not previous:
         raise ValueError("Registro não encontrado no DynamoDB.")
     item = record(kind, row)
     item["revision"] = int(previous["revision"]) + 1
-    db.put(item, previous["revision"])
+    if extra:
+        db.transaction([(item, previous["revision"]), *extra])
+    else:
+        db.put(item, previous["revision"])
 
 
-def remove(kind, rid):
+def remove(kind, rid, extra_keys=()):
     pk, sk = key(kind, rid)
     if kind == "produtos":
-        db.delete_many([(pk, sk), (INDEX, str(rid))])
+        db.delete_many([(pk, sk), (INDEX, str(rid)), *extra_keys])
     else:
         db.delete(pk, sk)
 

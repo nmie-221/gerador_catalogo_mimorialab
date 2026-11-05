@@ -8,7 +8,6 @@ import streamlit as st
 from repositories import production as repo
 from repositories.data import table
 from services import dynamodb as store
-from utils.pricing import quote
 
 
 def money(value):
@@ -214,141 +213,57 @@ def inventory_page():
             action(commit, 'Movimentação registrada e saldo atualizado.')
 
 
-def recipe_page():
-    st.caption('DA IDEIA AO PRODUTO')
-    st.title('Ficha técnica e preço')
-    st.caption('Defina o consumo para uma unidade e compare os preços por plataforma.')
+def production_page():
+    st.caption('PRODUÇÃO')
+    st.title('Registrar produção')
+    st.caption('Informe o que foi produzido para dar baixa nas matérias-primas da ficha técnica. Não há estoque de produtos prontos.')
     notice()
     products = table('produtos')
     if products.empty:
-        st.info('Cadastre um produto antes de configurar a ficha.')
+        st.info('Cadastre um produto com ficha técnica antes de registrar produções.')
         return
-    pid = st.selectbox('Produto', products['id_produto'].astype(str).tolist(), format_func=lambda i: str(products.loc[products['id_produto'].astype(str) == i, 'nome_produto'].iloc[0]), key='cost_product')
-    data = repo.product_costs(pid)
     items = repo.materials()
-    known = {m['SK']: m for m in items}
-    config = repo.settings()
-    left, right = st.columns([1.2, 1], gap='large')
-    with left:
-        st.subheader('Materiais por unidade do produto')
-        for index, row in enumerate(data['recipe']):
-            m = known.get(row['material_id'])
-            with st.expander(m['name'] if m else 'Material não encontrado'):
-                with st.form(f'recipe_{pid}_{row["material_id"]}_{data["revision"]}'):
-                    quantity = st.number_input('Consumo por produto'+(' em '+m['unit'] if m else ''), min_value=.000001, value=float(row['quantity']))
-                    remove = st.checkbox('Remover este material da ficha')
-                    if st.form_submit_button('Salvar item da ficha'):
-                        updated = deepcopy(data)
-                        if remove:
-                            updated['recipe'].pop(index)
-                        else:
-                            updated['recipe'][index]['quantity'] = quantity
-                        action(lambda: repo.save_product_costs(updated), 'Ficha atualizada.')
-        available = [m for m in items if m['active'] and not any(r['material_id'] == m['SK'] for r in data['recipe'])]
-        with st.expander('Adicionar matéria-prima'):
-            if available:
-                with st.form(f"add_recipe_{pid}_{data['revision']}"):
-                    mid = st.selectbox('Material', [m['SK'] for m in available], format_func=lambda i: known[i]['name']+' · '+known[i]['unit'])
-                    quantity = st.number_input('Consumo para uma unidade', min_value=.000001, value=1.)
-                    if st.form_submit_button('Adicionar à ficha'):
-                        updated = deepcopy(data)
-                        updated['recipe'].append(dict(material_id=mid, quantity=quantity))
-                        action(lambda: repo.save_product_costs(updated), 'Material adicionado à ficha.')
-            else:
-                st.info('Cadastre uma matéria-prima ativa para adicioná-la aqui.')
-    with right:
-        st.subheader('Tempo e impressão')
-        with st.form(f"production_params_{pid}_{data['revision']}"):
-            updated = deepcopy(data)
-            updated['minutes'] = n('Tempo por produto (minutos)', data['minutes'])
-            profiles = ['']+[p['id'] for p in config['prints']]
-            updated['print_id'] = st.selectbox('Perfil de impressão', profiles, index=profiles.index(data['print_id']) if data['print_id'] in profiles else 0, format_func=lambda i: 'Sem impressão' if not i else next(p['name'] for p in config['prints'] if p['id'] == i))
-            updated['prints'] = st.number_input('Lados impressos por produto', min_value=0, value=int(data['prints']))
-            updated['other'] = n('Outros custos por produto (R$)', data['other'])
-            updated['margin'] = st.number_input('Margem sobre o preço de venda (%)', min_value=0., max_value=99., value=float(data['margin']))
-            if st.form_submit_button('Salvar parâmetros do produto'):
-                action(lambda: repo.save_product_costs(updated), 'Parâmetros salvos neste produto.')
-        st.subheader('Taxas deste produto')
-        for index, platform in enumerate(data['platforms']):
-            with st.expander(platform['name']):
-                with st.form(f"platform_{pid}_{platform['id']}_{data['revision']}"):
-                    edited = platform_fields(platform)
-                    remove = st.checkbox('Remover esta plataforma do produto')
-                    if st.form_submit_button('Salvar taxas deste produto'):
-                        updated = deepcopy(data)
-                        if remove:
-                            updated['platforms'].pop(index)
-                        else:
-                            updated['platforms'][index] = dict(id=platform['id'], **edited)
-                        action(lambda: repo.save_product_costs(updated), 'Taxas atualizadas apenas neste produto.')
-        defaults = [p for p in config.get('marketplace_defaults', []) if p['name'].casefold() not in {v['name'].casefold() for v in data['platforms']}]
-        if defaults and st.button('Adicionar plataformas padrão a este produto', key='apply_platform_defaults_'+pid):
-            updated = deepcopy(data)
-            updated['platforms'].extend(dict(id=uuid4().hex, **p) for p in defaults)
-            action(lambda: repo.save_product_costs(updated), 'Plataformas padrão adicionadas ao produto.')
-        with st.expander('Adicionar plataforma ao produto'):
-            with st.form(f"new_platform_{pid}_{data['revision']}"):
-                platform = platform_fields(dict(name='', commission=0, fixed=0, freight=0))
-                if st.form_submit_button('Adicionar plataforma'):
-                    updated = deepcopy(data)
-                    updated['platforms'].append(dict(id=uuid4().hex, **platform))
-                    action(lambda: repo.save_product_costs(updated), 'Plataforma adicionada a este produto.')
-        st.caption('Tarifa e frete são reservados integralmente por produto. Não abatemos frete recebido. Impostos e encargos não informados não estão incluídos.')
-    costs = repo.breakdown(data, config, items)
-    st.metric('Custo completo por produto', money(costs['total']))
-    st.write({k: money(v) for k, v in {'Materiais': costs['materials'], 'Mão de obra': costs['labor'], 'Impressão': costs['printing'], 'Outros': costs['other']}.items()})
-    results = []
-    invalid = False
-    for platform in data['platforms']:
-        try:
-            result = quote(costs['total'], platform['commission'], platform['fixed'], platform['freight'], data['margin'])
-        except ValueError as exc:
-            invalid = True
-            st.error(platform['name']+': '+str(exc))
+    recipes = repo.product_costs_many(products['id_produto'].astype(str).tolist())
+    names = {str(r['id_produto']): f"{r['nome_produto']} ({r['id_produto']})" for _, r in products.iterrows()}
+    ready = [pid for pid in names if recipes[pid]['recipe']]
+    register, history = st.tabs(['Nova produção', 'Histórico'])
+    with register:
+        if not ready:
+            st.info('Nenhum produto tem matérias-primas na ficha técnica. Inclua-as em Produtos › Editar.')
         else:
-            results.append((platform, result))
-    if results:
-        st.dataframe(pd.DataFrame([{'Plataforma': p['name'], 'Preço sugerido': money(r['price']), 'Comissão': money(r['commission']), 'Tarifa fixa': money(r['fixed']), 'Frete': money(r['freight']), 'Lucro': money(r['profit']), 'Margem efetiva': f"{float(r['margin']):.2f}%"} for p, r in results]), hide_index=True, use_container_width=True)
-        selected = st.selectbox('Aplicar preço de', ['highest']+[p['id'] for p, _ in results], format_func=lambda i: 'Maior preço sugerido' if i == 'highest' else next(p['name'] for p, _ in results if p['id'] == i))
-        price = max(r['price'] for _, r in results) if selected == 'highest' else next(r['price'] for p, r in results if p['id'] == selected)
-        confirm = st.checkbox('Confirmo atualizar o preço e o custo do produto no catálogo')
-        if st.button('Aplicar preço ao produto', disabled=not confirm or (selected == 'highest' and invalid)):
-            from repositories.data import edit_product
-            fresh = table('produtos')
-            matched = fresh[fresh['id_produto'].astype(str) == str(pid)]
-            if len(matched) != 1:
-                st.error('Produto não encontrado ou ID duplicado.')
-            else:
-                product = matched.iloc[0]
-                action(lambda: edit_product(
-                    pid, product['nome_produto'], product['categoria'], product['tamanho'],
-                    product['cor'], product['material'], float(price), float(costs['total']),
-                    product['qtd_kit'], product['codigo_barras'], product['imagem_url']
-                ), 'Preço e custo aplicados ao catálogo.')
-    else:
-        st.info('Cadastre as plataformas deste produto para comparar preços.')
-    with st.expander('Registrar produção e baixar estoque'):
-        token_key = 'production_token_'+pid
-        token = st.session_state.setdefault(token_key, str(uuid4()))
-        with st.form('produce_'+token):
-            quantity = st.number_input('Quantidade de produtos produzidos', min_value=1, value=1)
-            for row in data['recipe']:
-                m = known.get(row['material_id'])
-                if m:
-                    st.caption(f"Por produto: {float(row['quantity']):g} {m['unit']} de {m['name']}. Saldo: {float(m['stock']):g}.")
-            confirm = st.checkbox('Confirmo a produção e a baixa dos materiais')
-            if st.form_submit_button('Confirmar produção'):
-                if not confirm:
-                    st.error('Confirme a produção para continuar.')
-                else:
-                    def commit():
-                        repo.produce(pid, quantity, token)
-                        st.session_state[token_key] = str(uuid4())
-                    action(commit, 'Produção registrada. Estoque atualizado.')
-
-
-def platform_fields(p):
-    return dict(name=st.text_input('Nome da plataforma', p['name']), commission=st.number_input('Comissão máxima (%)', min_value=0., max_value=99., value=float(p['commission'])), fixed=n('Tarifa fixa por produto (R$)', p['fixed']), freight=n('Frete reservado por produto (R$)', p['freight']))
+            pid = st.selectbox('Produto', ready, format_func=names.get, key='production_product')
+            quantity = st.number_input('Quantidade produzida', min_value=1, value=1, step=1, key='production_quantity')
+            plan = repo.production_plan(pid, quantity, items, recipes[pid])
+            st.dataframe(pd.DataFrame([{
+                'Matéria-prima': r['name'], 'Por unidade': f"{float(r['per_unit']):g} {r['unit']}",
+                'Necessário': f"{float(r['needed']):g} {r['unit']}", 'Saldo atual': f"{float(r['stock']):g}",
+                'Saldo após': f"{float(r['after']):g}", 'Situação': 'OK' if r['ok'] else 'Falta material',
+            } for r in plan]), hide_index=True, width='stretch')
+            limit = repo.max_producible(plan)
+            st.caption(f'Com o estoque atual dá para produzir até {limit} unidade(s) deste produto.')
+            short = not all(r['ok'] for r in plan)
+            if short:
+                st.warning('Estoque insuficiente. Registre uma entrada em Matérias-primas ou reduza a quantidade.')
+            token_key = 'production_token_'+pid
+            token = st.session_state.setdefault(token_key, str(uuid4()))
+            confirm = st.checkbox('Confirmo a produção e a baixa dos materiais', key='production_confirm_'+token)
+            if st.button('Registrar produção', type='primary', disabled=short or not confirm, key='production_submit'):
+                def commit():
+                    repo.produce(pid, quantity, token, names[pid])
+                    st.session_state[token_key] = str(uuid4())
+                action(commit, f'Produção de {quantity} unidade(s) registrada. Estoque atualizado.')
+    with history:
+        events = repo.productions()
+        if not events:
+            st.info('Nenhuma produção registrada.')
+        else:
+            st.dataframe(pd.DataFrame([{
+                'Data (UTC)': e['date'][:16].replace('T', ' '),
+                'Produto': e.get('product_name') or names.get(str(e['product_id']), e['product_id']),
+                'Quantidade': int(e['quantity']), 'Custo unitário': money(e.get('unit_cost', 0)),
+                'Custo total': money(e.get('unit_cost', 0)*e['quantity']),
+                'Materiais': ', '.join(f"{float(c['quantity']):g} {c['unit']} {c['material_name']}" for c in e.get('consumed', [])),
+            } for e in events]), hide_index=True, width='stretch')
 
 
 def jump(page, nav, product_action=None):
@@ -381,8 +296,8 @@ def home_page():
         st.subheader('O que vamos fazer hoje?')
         st.button('＋ Cadastrar produto', type='primary', use_container_width=True, on_click=jump, args=('📝 Cadastrar produto', 'Produtos', 'Cadastrar'))
         st.button('↗ Matérias-primas e entradas', use_container_width=True, on_click=jump, args=('📦 Matérias-primas e estoque', 'Matérias-primas'))
-        st.button('✦ Ficha técnica e produção', use_container_width=True, on_click=jump, args=('🧾 Ficha e preço', 'Ficha e preço'))
-        st.info('Cadastre o material, monte a ficha técnica e confirme a produção para dar baixa no estoque.')
+        st.button('✦ Registrar produção', use_container_width=True, on_click=jump, args=('🏭 Produção', 'Produção'))
+        st.info('Cadastre o produto com a ficha técnica e registre a produção para dar baixa nas matérias-primas.')
     with right, st.container(border=True, key="card_home_stock"):
         st.subheader('Atenção ao estoque')
         if not low:

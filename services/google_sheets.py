@@ -18,8 +18,14 @@ SHEETS = {
 }
 
 HEADERS = {
-    "PRODUTOS": ["id_produto", "nome_produto", "categoria", "tamanho", "cor", "material", "preco", "custo", "qtd_kit", "sku", "codigo_barras", "imagem_url"],
-    "CATEGORIAS": ["id", "nome", "abreviacao", "ativo"],
+    # codigo_barras is no longer edited but stays in place so existing sheet
+    # columns keep their positions and previously stored values are preserved.
+    "PRODUTOS": [
+        "id_produto", "nome_produto", "categoria", "tamanho", "cor", "material", "preco", "custo", "qtd_kit", "sku", "codigo_barras", "imagem_url",
+        "cfop_estadual", "cfop_interestadual", "csosn", "origem",
+        "peso_liquido_g", "peso_bruto_g", "altura_cm", "largura_cm", "comprimento_cm", "sob_encomenda", "dias_producao",
+    ],
+    "CATEGORIAS": ["id", "nome", "abreviacao", "ativo", "ncm"],
     "TAMANHOS": ["id", "nome", "abreviacao", "ativo"],
     "CORES": ["id", "nome", "abreviacao", "ativo"],
     "MATERIAIS": ["id", "nome", "abreviacao", "ativo"],
