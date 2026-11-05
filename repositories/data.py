@@ -4,22 +4,29 @@ from typing import Any
 
 import pandas as pd
 
-from services.google_sheets import SHEETS, append_rows, delete_row, now_iso, read_sheet, update_row
+from services.google_sheets import HEADERS, SHEETS, append_rows, delete_row, now_iso, read_sheet, update_row
 from repositories import catalog_dynamo as dynamo
 from utils.sku import build_sku
-from utils.validators import abbreviation, clean, normalize, number, required, unique
+from utils.validators import abbreviation, clean, format_ncm, ncm as valid_ncm, normalize, number, required, unique
 
 
 def table(kind: str) -> pd.DataFrame:
     frame = dynamo.read(kind) if dynamo.enabled() else read_sheet(SHEETS[kind]).copy()
+    for column in HEADERS[SHEETS[kind]]:
+        if column not in frame.columns:  # sheets created before the newer product fields
+            frame[column] = ""
+    frame = frame.fillna("")
     if kind == "produtos" and dynamo.enabled() and not frame.empty:
+        # The cost shown everywhere is always the live sum of the recipe, so
+        # material price changes are reflected without re-saving each product.
         from repositories import production
         config = production.settings()
         items = production.materials()
+        recipes = production.product_costs_many(frame["id_produto"].astype(str).tolist())
         frame = frame.copy()
         for index, row in frame.iterrows():
-            costs = production.product_costs(row["id_produto"])
-            if costs["recipe"] or costs["minutes"] or costs["prints"] or costs["other"]:
+            costs = recipes[str(row["id_produto"])]
+            if production.has_costs(costs):
                 frame.at[index, "custo"] = float(production.breakdown(costs, config, items)["total"])
     return frame
 
@@ -47,16 +54,23 @@ def _domain_id(kind: str, prefix: str) -> str:
     return f"{prefix}{max(numbers, default=0) + 1:03d}"
 
 
-def add_domain(kind: str, name: str, abbrev: str, enabled: bool) -> None:
+def _domain_row(kind: str, identifier: str, name: str, abbrev: str, enabled: bool, ncm: str) -> list:
+    row = [identifier, name, abbrev, "Sim" if enabled else "Nao"]
+    if kind == "categorias":
+        row.append(valid_ncm(ncm))  # products inherit the NCM of their category
+    return row
+
+
+def add_domain(kind: str, name: str, abbrev: str, enabled: bool, ncm: str = "") -> None:
     frame = table(kind)
     name = required(name, "o nome")
     abbrev = abbreviation(required(abbrev, "a abreviacao"))
     if not unique(frame["nome"], name) or not unique(frame["abreviacao"], abbrev):
         raise ValueError("Nome e abreviacao devem ser unicos dentro do cadastro.")
     prefix = {"categorias": "CAT", "tamanhos": "TAM", "cores": "COR", "materiais": "MAT", "kits": "KIT"}[kind]
-    row = [_domain_id(kind, prefix), name, abbrev, "Sim" if enabled else "Nao"]
+    row = _domain_row(kind, _domain_id(kind, prefix), name, abbrev, enabled, ncm)
     if dynamo.enabled():
-        dynamo.insert(kind, dict(zip(["id", "nome", "abreviacao", "ativo"], row)))
+        dynamo.insert(kind, dict(zip(HEADERS[SHEETS[kind]], row)))
     else:
         append_rows(SHEETS[kind], [row])
 
@@ -80,6 +94,12 @@ def domain_in_use(kind: str, identifier: str) -> bool:
     return products[DOMAIN_PRODUCT_FIELDS[kind]].astype(str).eq(str(identifier)).any()
 
 
+def fiscal_in_use(kind: str, code: str) -> bool:
+    from repositories.fiscal import KINDS
+    products = fresh_table("produtos")
+    return products[KINDS[kind]["field"]].astype(str).eq(str(code)).any()
+
+
 def _domain_record(kind: str, identifier: str) -> tuple[pd.DataFrame, int]:
     if kind not in DOMAIN_PRODUCT_FIELDS:
         raise ValueError("Cadastro auxiliar inválido.")
@@ -90,7 +110,7 @@ def _domain_record(kind: str, identifier: str) -> tuple[pd.DataFrame, int]:
     return frame, matches[0]
 
 
-def edit_domain(kind: str, identifier: str, name: str, abbrev: str, enabled: bool) -> None:
+def edit_domain(kind: str, identifier: str, name: str, abbrev: str, enabled: bool, ncm: str = "") -> None:
     frame, position = _domain_record(kind, identifier)
     name = required(name, "o nome")
     abbrev = abbreviation(required(abbrev, "a abreviacao"))
@@ -99,9 +119,9 @@ def edit_domain(kind: str, identifier: str, name: str, abbrev: str, enabled: boo
         raise ValueError("Nome e abreviacao devem ser unicos dentro do cadastro.")
     if abbrev != str(frame.iloc[position]["abreviacao"]) and domain_in_use(kind, identifier):
         raise ValueError("A abreviação está vinculada a produtos e não pode ser alterada para preservar os SKUs existentes.")
-    row = [identifier, name, abbrev, "Sim" if enabled else "Nao"]
+    row = _domain_row(kind, identifier, name, abbrev, enabled, ncm)
     if dynamo.enabled():
-        dynamo.update(kind, dict(zip(["id", "nome", "abreviacao", "ativo"], row)))
+        dynamo.update(kind, dict(zip(HEADERS[SHEETS[kind]], row)))
     else:
         update_row(SHEETS[kind], position + 2, row)
 
@@ -125,8 +145,42 @@ def build_product_sku(product_id: str, category_id: str, size_id: str, color_id:
     return build_sku(product_id, str(category["abreviacao"]), str(size["abreviacao"]), str(color["abreviacao"]), str(kit["abreviacao"]), str(material["abreviacao"]))
 
 
-def _product_row(product_id: str, name: str, category_id: str, size_id: str, color_id: str, material_id: str, price: float, cost: float, kit_id: str, barcode: str, image_url: str, sku: str) -> list[Any]:
-    return [product_id, clean(name), category_id, size_id, color_id, material_id, number(price, "O preco"), number(cost, "O custo"), kit_id, sku, barcode, clean(image_url)]
+PRODUCT_TEXT_FIELDS = ["cfop_estadual", "cfop_interestadual", "csosn", "origem"]
+PRODUCT_MEASURES = {
+    "peso_liquido_g": "Peso líquido", "peso_bruto_g": "Peso bruto com embalagem",
+    "altura_cm": "Altura do pacote", "largura_cm": "Largura do pacote", "comprimento_cm": "Comprimento do pacote",
+}
+
+
+def _product_record(product_id: str, values: dict, sku: str, cost: float, previous: dict | None) -> dict:
+    """Validate the product form values and build the stored record."""
+    record = {column: "" for column in _headers()}
+    record.update(id_produto=product_id, nome_produto=clean(values["nome_produto"]), sku=sku)
+    for field in ["categoria", "tamanho", "cor", "material", "qtd_kit"]:
+        record[field] = values[field]
+    record["preco"] = number(values["preco"], "O preco")
+    record["custo"] = round(float(cost), 2)
+    record["imagem_url"] = clean(values.get("imagem_url", ""))
+    # Barcodes are no longer edited, but existing values are never erased.
+    record["codigo_barras"] = clean((previous or {}).get("codigo_barras", ""))
+    for field in PRODUCT_TEXT_FIELDS:
+        record[field] = clean(values.get(field, ""))
+    for field, label in PRODUCT_MEASURES.items():
+        record[field] = number(values.get(field) or 0, label)
+    if record["peso_liquido_g"] and record["peso_bruto_g"] and record["peso_bruto_g"] < record["peso_liquido_g"]:
+        raise ValueError("O peso bruto (com embalagem de envio) não pode ser menor que o peso líquido.")
+    on_demand = bool(values.get("sob_encomenda"))
+    days = number(values.get("dias_producao") or 0, "Dias de produção") if on_demand else 0
+    if on_demand and (days < 1 or days != int(days)):
+        raise ValueError("Informe os dias de produção (número inteiro maior que zero) para produtos sob encomenda.")
+    record["sob_encomenda"] = "Sim" if on_demand else "Nao"
+    record["dias_producao"] = int(days)
+    return record
+
+
+def _headers() -> list[str]:
+    from services.google_sheets import HEADERS
+    return HEADERS["PRODUTOS"]
 
 
 def _money_series(values: pd.Series) -> pd.Series:
@@ -139,71 +193,73 @@ def _money_series(values: pd.Series) -> pd.Series:
     return values.map(parse).astype("float64")
 
 
-def add_product(name: str, category_id: str, size_id: str, color_id: str, material_id: str, price: float, cost: float, kit_id: str, barcode: str, image_url: str) -> str:
+def save_product(product_id: str | None, values: dict, costs: dict) -> tuple[str, str]:
+    """Create (product_id=None) or edit a product together with its recipe.
+
+    The stored cost is the sum of the recipe. With DynamoDB the product and its
+    recipe are written in one transaction, so neither is saved without the other.
+    Returns (product_id, sku).
+    """
+    from repositories import production
     products = fresh_table("produtos")
-    name = required(name, "o nome do produto")
-    if not unique(products["nome_produto"], name):
-        raise ValueError("Ja existe um produto com esse nome.")
-    barcode = clean(barcode)
-    if barcode and not unique(products["codigo_barras"], barcode):
-        raise ValueError("Ja existe um produto com esse codigo de barras.")
-    product_id = _next_id("P")
-    sku = build_product_sku(product_id, category_id, size_id, color_id, material_id, kit_id)
-    if not unique(products["sku"], sku):
-        raise ValueError("Ja existe um produto com esse SKU.")
-    row = _product_row(product_id, name, category_id, size_id, color_id, material_id, price, cost, kit_id, barcode, image_url, sku)
-    if dynamo.enabled():
-        from services.google_sheets import HEADERS
-        dynamo.insert("produtos", dict(zip(HEADERS["PRODUTOS"], row)))
+    name = required(values.get("nome_produto"), "o nome do produto")
+    missing = [label for field, label in [("categoria", "Categoria"), ("tamanho", "Tamanho"), ("cor", "Cor/tema"), ("material", "Material"), ("qtd_kit", "Kit")] if not values.get(field)]
+    if missing:
+        raise ValueError(f"Preencha os campos obrigatórios: {', '.join(missing)}.")
+    previous = None
+    others = products
+    if product_id:
+        matches = products.index[products["id_produto"].astype(str) == str(product_id)].tolist()
+        if not matches:
+            raise ValueError("Produto nao encontrado.")
+        previous = products.loc[matches[0]].to_dict()
+        others = products.drop(index=matches[0])
     else:
-        append_rows("PRODUTOS", [row])
-    return sku
-
-
-def edit_product(product_id: str, name: str, category_id: str, size_id: str, color_id: str, material_id: str, price: float, cost: float, kit_id: str, barcode: str, image_url: str) -> str:
-    products = fresh_table("produtos")
-    matches = products.index[products["id_produto"].astype(str) == str(product_id)].tolist()
-    if not matches:
-        raise ValueError("Produto nao encontrado.")
-    index = matches[0]
-    name = required(name, "o nome do produto")
-    others = products.drop(index=index)
+        product_id = _next_id("P")
     if not unique(others["nome_produto"], name):
         raise ValueError("Ja existe outro produto com esse nome.")
-    barcode = clean(barcode)
-    if barcode and not unique(others["codigo_barras"], barcode):
-        raise ValueError("Ja existe outro produto com esse codigo de barras.")
-    if barcode and not unique(others["codigo_barras"], barcode):
-        raise ValueError("Ja existe outro produto com esse codigo de barras.")
-    sku = build_product_sku(product_id, category_id, size_id, color_id, material_id, kit_id)
+    sku = build_product_sku(product_id, values["categoria"], values["tamanho"], values["cor"], values["material"], values["qtd_kit"])
     if not unique(others["sku"], sku):
-        raise ValueError("A edicao geraria um SKU que ja existe.")
-    row = _product_row(product_id, name, category_id, size_id, color_id, material_id, price, cost, kit_id, barcode, image_url, sku)
+        raise ValueError("Ja existe um produto com esse SKU." if previous is None else "A edicao geraria um SKU que ja existe.")
+    pk, sk = production.costs_key(product_id)
+    recipe = dict(costs, PK=pk, SK=sk)
+    if previous is None:
+        # A leftover recipe from an old product with the same ID is replaced.
+        recipe["revision"] = production.product_costs(product_id)["revision"]
+    recipe_item, expected = production.prepare_product_costs(recipe)
+    cost = production.breakdown(recipe_item, production.settings(), production.materials())["total"]
+    record = _product_record(product_id, dict(values, nome_produto=name), sku, cost, previous)
     if dynamo.enabled():
-        from services.google_sheets import HEADERS
-        dynamo.update("produtos", dict(zip(HEADERS["PRODUTOS"], row)))
+        if previous is None:
+            dynamo.insert("produtos", record, extra=[(recipe_item, expected)])
+        else:
+            dynamo.update("produtos", record, extra=[(recipe_item, expected)])
+        return product_id, sku
+    production.store.put(recipe_item, expected)
+    row = [record[column] for column in _headers()]
+    if previous is None:
+        append_rows("PRODUTOS", [row])
     else:
-        update_row("PRODUTOS", index + 2, row)
-    return sku
+        update_row("PRODUTOS", matches[0] + 2, row)
+    return product_id, sku
 
 
 def delete_product(product_id: str) -> None:
-    # Avoid reusing a deleted product ID for a recipe or production history.
-    import streamlit as st
-    if 'aws' in st.secrets:
-        from repositories.production import product_costs
-        costs = product_costs(product_id)
-        if costs.get('recipe') or costs.get('platforms') or costs.get('has_production'):
-            raise ValueError("Produto vinculado a ficha, plataformas ou histórico de produção: exclusão bloqueada para preservar os dados.")
-    products = table("produtos")
+    from repositories import production
+    products = fresh_table("produtos")
     matches = products.index[products["id_produto"].astype(str) == str(product_id)].tolist()
     if not matches:
         raise ValueError("Produto nao encontrado.")
-    from services.google_sheets import delete_row
+    costs = production.product_costs(product_id)
+    if costs.get("has_production"):
+        raise ValueError("Produto com produção registrada: exclusão bloqueada para preservar o histórico. Mantenha-o cadastrado.")
+    recipe_keys = [production.costs_key(product_id)] if costs["revision"] else []
     if dynamo.enabled():
-        dynamo.remove("produtos", product_id)
+        dynamo.remove("produtos", product_id, extra_keys=recipe_keys)
     else:
         delete_row("PRODUTOS", matches[0] + 2)
+        if recipe_keys:
+            production.store.delete(*recipe_keys[0])
 
 
 def catalog() -> pd.DataFrame:
@@ -225,4 +281,10 @@ def catalog() -> pd.DataFrame:
     result["Custo"] = _money_series(result["custo"])
     result["Lucro"] = result["Preco"] - result["Custo"]
     result["Margem %"] = result.apply(lambda row: row["Lucro"] / row["Preco"] * 100 if row["Preco"] else 0, axis=1)
-    return result[["id_produto", "nome_produto", "Categoria", "Tamanho", "Cor", "Material", "Kit", "sku", "codigo_barras", "imagem_url", "Preco", "Custo", "Lucro", "Margem %"]]
+    category_ncm = table("categorias").set_index("id")["ncm"].to_dict()
+    result["NCM"] = result["categoria"].map(category_ncm).fillna("").map(format_ncm)
+    result["Peso bruto (g)"] = _money_series(result["peso_bruto_g"])
+    dimensions = zip(*(_money_series(result[c]) for c in ["altura_cm", "largura_cm", "comprimento_cm"]))
+    result["Pacote (cm)"] = [" x ".join(f"{v:g}" for v in sizes) if any(sizes) else "" for sizes in dimensions]
+    result["Produção (dias)"] = result.apply(lambda row: str(row["dias_producao"]) if str(row["sob_encomenda"]) == "Sim" else "Pronta entrega", axis=1)
+    return result[["id_produto", "nome_produto", "Categoria", "Tamanho", "Cor", "Material", "Kit", "sku", "imagem_url", "Preco", "Custo", "Lucro", "Margem %", "NCM", "Peso bruto (g)", "Pacote (cm)", "Produção (dias)"]]

@@ -1,7 +1,8 @@
 """Estimate full product costs using the most expensive configured platform.
 
-The catalog's 'custo' column remains the manually entered base cost. Never
-overwrite it with a derived total, otherwise editing would double count costs.
+`production_cost` is the recipe total (materials, labor, printing and other
+costs). The catalog stores that same total in 'custo', so never pass it as
+`base_cost` too, otherwise it would be counted twice.
 """
 from decimal import Decimal
 

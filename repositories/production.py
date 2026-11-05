@@ -1,4 +1,4 @@
-"""Production data in DynamoDB; existing product catalog remains in Sheets."""
+"""Production data (materials, recipes, costs and stock events) in DynamoDB."""
 from copy import deepcopy
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -84,14 +84,42 @@ def save_material(data):
     expected = value['revision'] or None
     value['revision'] += 1
     store.put(value, expected)
+    return value
+
+
+def costs_key(pid):
+    return 'MIMORIALAB#PRODUCT#'+str(pid), 'COSTS'
+
+
+def empty_costs(pid):
+    pk, sk = costs_key(pid)
+    return dict(PK=pk, SK=sk, revision=0, recipe=[], platforms=[], minutes=0, print_id='', prints=0, other=0, extras=[], margin=30)
+
+
+def _with_defaults(pid, data):
+    result = empty_costs(pid)
+    result.update(data or {})
+    return result
 
 
 def product_costs(pid):
-    return store.get('MIMORIALAB#PRODUCT#'+str(pid), 'COSTS') or dict(PK='MIMORIALAB#PRODUCT#'+str(pid), SK='COSTS', revision=0, recipe=[], platforms=[], minutes=0, print_id='', prints=0, other=0, margin=30)
+    return _with_defaults(pid, store.get(*costs_key(pid)))
 
 
-def save_product_costs(data):
+def product_costs_many(pids):
+    """Recipes for many products in batched reads (missing ones come back empty)."""
+    found = store.batch_get([costs_key(pid) for pid in pids])
+    return {str(pid): _with_defaults(pid, found.get(costs_key(pid))) for pid in pids}
+
+
+def has_costs(data):
+    return bool(data['recipe'] or data['minutes'] or data['prints'] or data['other'] or data.get('extras'))
+
+
+def prepare_product_costs(data):
+    """Validate a recipe and return (item, expected_revision) for a conditional write."""
     value = deepcopy(data)
+    value.setdefault('extras', [])
     known = {m['SK']: m for m in materials()}
     ids = []
     for row in value['recipe']:
@@ -120,9 +148,25 @@ def save_product_costs(data):
         raise ValueError('Selecione um perfil de impressão válido.')
     if value['margin'] >= 100:
         raise ValueError('Margem deve ser menor que 100%.')
+    extras = []
+    for row in value.get('extras', []):
+        name = ' '.join(str(row.get('name', '')).split())
+        amount = decimal(row.get('value', 0), 'Valor do custo')
+        if not name and not amount:
+            continue  # blank line left in the form
+        if not name:
+            raise ValueError('Informe a descrição de cada custo adicional.')
+        extras.append(dict(name=name, value=amount))
+    value['extras'] = extras
     expected = value['revision'] or None
     value['revision'] += 1
+    return value, expected
+
+
+def save_product_costs(data):
+    value, expected = prepare_product_costs(data)
     store.put(value, expected)
+    return value
 
 
 def breakdown(data, config, items):
@@ -138,7 +182,7 @@ def breakdown(data, config, items):
     if data['prints'] and p is None:
         raise ValueError('Perfil de impressão não encontrado.')
     printing = print_rate(p)*decimal(data['prints']) if p else Decimal(0)
-    other = decimal(data['other'])
+    other = decimal(data['other'])+sum((decimal(row['value']) for row in data.get('extras', [])), Decimal(0))
     return dict(materials=material_cost, labor=labor, printing=printing, other=other, total=material_cost+labor+printing+other)
 
 
@@ -166,7 +210,33 @@ def move(material_id, kind, quantity, token, price=0, note=''):
     store.transaction([(m, revision), (event, None)], token)
 
 
-def produce(pid, quantity, token):
+def production_plan(pid, quantity, items=None, data=None):
+    """Materials needed to produce `quantity` units, with the resulting balance."""
+    data = data or product_costs(pid)
+    known = {m['SK']: m for m in (items if items is not None else materials())}
+    count = decimal(quantity, 'Quantidade produzida')
+    rows = []
+    for row in data['recipe']:
+        m = known.get(row['material_id'])
+        per_unit = decimal(row['quantity'])
+        stock = decimal(m['stock']) if m else Decimal(0)
+        needed = per_unit*count
+        rows.append(dict(material_id=row['material_id'], name=m['name'] if m else 'Material não encontrado',
+                         unit=m['unit'] if m else '', per_unit=per_unit, needed=needed, stock=stock,
+                         after=stock-needed, ok=bool(m and m['active'] and stock >= needed),
+                         max_units=int(stock//per_unit) if m and m['active'] and per_unit else 0))
+    return rows
+
+
+def max_producible(rows):
+    return min((r['max_units'] for r in rows), default=0)
+
+
+def productions():
+    return sorted((e for e in store.query(EVENTS) if e.get('type') == 'Produção'), key=lambda e: e['date'], reverse=True)
+
+
+def produce(pid, quantity, token, product_name=''):
     if store.get(EVENTS, token):
         return
     count = decimal(quantity, 'Quantidade produzida', positive=True)
@@ -193,7 +263,7 @@ def produce(pid, quantity, token):
         requests.append((m, revision))
         consumed.append(dict(material_id=mid, material_name=m['name'], quantity=qty, unit=m['unit']))
     costs = breakdown(data, settings(), items)
-    event = dict(PK=EVENTS, SK=token, type='Produção', product_id=str(pid), quantity=count, date=timestamp(), consumed=consumed, unit_cost=costs['total'])
+    event = dict(PK=EVENTS, SK=token, type='Produção', product_id=str(pid), product_name=product_name, quantity=count, date=timestamp(), consumed=consumed, unit_cost=costs['total'])
     # Pin the recipe revision so a concurrent recipe edit cannot change this production.
     revision = data['revision']
     data['revision'] += 1

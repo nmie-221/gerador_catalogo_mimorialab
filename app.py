@@ -6,14 +6,15 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from repositories.data import active, add_domain, add_product, catalog, delete_domain, delete_product, edit_domain, edit_product, table
+from repositories.data import add_domain, catalog, delete_domain, delete_product, edit_domain, fiscal_in_use, table
+from repositories import catalog_dynamo, fiscal
 from services.auth import is_authenticated, login_screen
 from services.google_sheets import SheetsError
-from utils.validators import number, required_fields
-from utils.total_cost import estimate_for_product
-from views.production import inventory_page, costs_page, recipe_page, home_page
+from views.production import inventory_page, costs_page, production_page, home_page
+from views.product_form import product_editor
 from views.migration import migration_page
 from services.dynamodb import StorageError
+from utils.validators import format_ncm
 
 st.set_page_config(page_title="Catálogo de Produtos", page_icon="📦", layout="wide")
 st.markdown(
@@ -86,133 +87,10 @@ def run(action):
         return False
 
 
-def domain_select(frame: pd.DataFrame, label: str, key: str, selected_id: str | None = None) -> str | None:
-    if frame.empty:
-        st.warning(f"Nenhum registro ativo disponível para {label.lower()}.")
-        return None
-    options = {f"{row['nome']} ({row['id']})": row["id"] for _, row in frame.iterrows()}
-    labels = list(options)
-    default_index = 0
-    if selected_id in options.values():
-        default_index = list(options.values()).index(selected_id)
-    selected = st.selectbox(label, labels, index=default_index, key=key)
-    return options[selected]
-
-
-def product_form(values: dict | None = None, form_key: str = "new_product", before_pricing=None, product_id=None) -> tuple:
-    values = values or {}
-    def decimal_text(value: object) -> str:
-        try:
-            return f"{number(value or 0, 'O valor'):.2f}"
-        except ValueError:
-            return "0.00"
-
-    categories, sizes, colors, materials, kits = (active(kind) for kind in ("categorias", "tamanhos", "cores", "materiais", "kits"))
-    if before_pricing:
-        characteristics_tab, simulation_tab, pricing_tab = st.tabs(["Características", "Simulação", "Preço e dados finais"])
-    else:
-        characteristics_tab = simulation_tab = pricing_tab = st.container()
-
-    with characteristics_tab:
-        st.subheader("Características do produto")
-        name = st.text_input("Nome do produto", value=str(values.get("nome_produto", "")), key=f"{form_key}_name")
-        category = domain_select(categories, "Categoria", f"{form_key}_category", values.get("categoria"))
-        size = domain_select(sizes, "Tamanho", f"{form_key}_size", values.get("tamanho"))
-        color = domain_select(colors, "Cor/tema", f"{form_key}_color", values.get("cor"))
-        material = domain_select(materials, "Material", f"{form_key}_material", values.get("material"))
-        kit = domain_select(kits, "Kit", f"{form_key}_kit", values.get("qtd_kit"))
-    with simulation_tab:
-        if before_pricing:
-            before_pricing()
-    with pricing_tab:
-        st.subheader("Preço e dados finais")
-        with st.form(form_key):
-            st.caption("Informe os valores em reais, por exemplo: 7,63 ou 7.63.")
-            price = st.text_input("Preço", value=decimal_text(values.get("preco", st.session_state.get(f"{form_key}_price", 0))), key=f"{form_key}_price")
-            cost = st.text_input("Custo", value=decimal_text(values.get("custo", st.session_state.get(f"{form_key}_cost", 0))), key=f"{form_key}_cost")
-            barcode = st.text_input("Código de barras (opcional)", value=str(values.get("codigo_barras", "")))
-            image_url = st.text_input("URL da imagem (opcional)", value=str(values.get("imagem_url", "")))
-            try:
-                estimate = estimate_for_product(product_id, number(cost, "O custo"), number(price, "O preço"))
-                st.caption(f"Custo total estimado (plataforma mais cara): R$ {estimate['total']:.2f} | {estimate['platform']}")
-                st.caption(f"Produção: R$ {estimate['production']:.2f} | Frete: R$ {estimate['freight']:.2f} | Tarifa: R$ {estimate['fixed']:.2f} | Comissão: R$ {estimate['commission']:.2f}")
-                st.caption(f"Lucro estimado: R$ {estimate['profit']:.2f} | Margem: {estimate['margin']:.2f}%")
-            except (ValueError, KeyError, StorageError) as exc:
-                st.warning(f"Não foi possível estimar o custo total: {exc}")
-            submitted = st.form_submit_button("Salvar")
-    return submitted, name, category, size, color, material, price, cost, kit, barcode, image_url
-
-
-def marketplace_simulator() -> None:
-    from repositories.production import settings
-    try:
-        defaults = {p['name'].casefold(): p for p in settings().get('marketplace_defaults', [])}
-    except StorageError:
-        defaults = {}
-    ml = defaults.get('mercado livre', {})
-    shopee = defaults.get('shopee', {})
-    simulation_fields = st.columns(4)
-    cost_text = simulation_fields[0].text_input("Custo (R$)", value="0.00", key="new_marketplace_cost")
-    margin_text = simulation_fields[1].text_input("Margem de lucro (%)", value="30.00", key="new_marketplace_margin")
-    mercado_livre_fee_text = simulation_fields[2].text_input("Taxa Mercado Livre (%)", value=f"{float(ml.get('commission', 20)):.2f}", key="new_mercado_livre_fee")
-    shopee_fee_text = simulation_fields[3].text_input("Taxa Shopee (%)", value=f"{float(shopee.get('commission', 14)):.2f}", key="new_shopee_fee")
-
-    def parse_simulation_value(value: str) -> float:
-        try:
-            parsed = float(value)
-            return max(parsed, 0.0)
-        except ValueError:
-            return 0.0
-
-    cost = parse_simulation_value(cost_text)
-    profit_margin = parse_simulation_value(margin_text)
-    mercado_livre_fee = min(parse_simulation_value(mercado_livre_fee_text), 99.99)
-    shopee_fee = min(parse_simulation_value(shopee_fee_text), 99.99)
-    from utils.pricing import quote
-    try:
-        mercado_livre_price = float(quote(cost, mercado_livre_fee, ml.get('fixed', 0), ml.get('freight', 0), profit_margin)['price'])
-        shopee_price = float(quote(cost, shopee_fee, shopee.get('fixed', 0), shopee.get('freight', 0), profit_margin)['price'])
-    except ValueError as exc:
-        st.error(str(exc))
-        return
-    st.caption("Simulação com comissão, tarifa fixa e frete padrão configurados em Custos de produção. Confirme tarifas por faixa de preço.")
-    result_columns = st.columns(2)
-    result_columns[0].metric("Preço sugerido Mercado Livre", f"R$ {mercado_livre_price:.2f}")
-    result_columns[1].metric("Preço sugerido Shopee", f"R$ {shopee_price:.2f}")
-    action_columns = st.columns(2)
-    if action_columns[0].button("Usar preço Mercado Livre", key="use_mercado_livre_price", use_container_width=True):
-        st.session_state["new_product_price"] = f"{mercado_livre_price:.2f}"
-        st.session_state["new_product_cost"] = f"{cost:.2f}"
-        st.rerun()
-    if action_columns[1].button("Usar preço Shopee", key="use_shopee_price", use_container_width=True):
-        st.session_state["new_product_price"] = f"{shopee_price:.2f}"
-        st.session_state["new_product_cost"] = f"{cost:.2f}"
-        st.rerun()
-    st.caption("Use um dos valores sugeridos no campo Preço abaixo, se desejar.")
-
-
 def register_page() -> None:
     st.title("📝 Cadastrar produto")
-    st.caption("✨ O SKU é gerado automaticamente por categoria, tamanho, cor, kit e material.")
-    submitted, name, category, size, color, material, price, cost, kit, barcode, image_url = product_form(before_pricing=marketplace_simulator)
-    if submitted:
-        missing = required_fields({
-            "Nome do produto": name,
-            "Categoria": category,
-            "Tamanho": size,
-            "Cor/tema": color,
-            "Material": material,
-            "Kit": kit,
-            "Preço": price,
-            "Custo": cost,
-        })
-        if missing:
-            st.error(f"Preencha os campos obrigatórios: {', '.join(missing)}.")
-            return
-        result = run(lambda: add_product(name, category, size, color, material, number(price, "O preco"), number(cost, "O custo"), kit, barcode, image_url))
-        if result is not False:
-            st.success(f"Produto cadastrado. SKU: {result}")
-            st.rerun()
+    st.caption("Preencha as abas e salve uma única vez. O custo é a soma da ficha técnica.")
+    product_editor()
 
 
 def query_page() -> None:
@@ -221,7 +99,7 @@ def query_page() -> None:
     if products.empty:
         st.info("📦 Nenhum produto cadastrado.")
         return
-    search = st.text_input("Buscar por nome, SKU, código de barras ou ID")
+    search = st.text_input("Buscar por nome, SKU, NCM ou ID")
     filters = st.columns(5)
     filter_columns = [
         ("Categoria", "Categoria"),
@@ -248,11 +126,11 @@ def query_page() -> None:
                 st.caption(str(product['id_produto'])+' · '+str(product.get('Categoria', '')))
                 st.subheader(str(product['nome_produto']))
                 st.metric('Preço de venda', money(product['Preco']))
-                st.caption('Custo cadastrado: '+money(product['Custo']))
-                def open_recipe(identifier=str(product['id_produto'])):
-                    st.session_state.cost_product = identifier
-                    jump('🧾 Ficha e preço', 'Ficha e preço')
-                st.button('Ficha e preço →', key='open_product_'+str(product['id_produto']), on_click=open_recipe)
+                st.caption('Custo de produção (ficha): '+money(product['Custo']))
+                def open_product(label=f"{product['nome_produto']} ({product['id_produto']})"):
+                    st.session_state.edit_selected_product = label
+                    jump('⚙️ Editar ou excluir', 'Produtos', 'Editar ou excluir')
+                st.button('Editar produto →', key='open_product_'+str(product['id_produto']), on_click=open_product)
         if products.empty:
             st.info('Nenhum produto encontrado.')
         return
@@ -279,32 +157,15 @@ def manage_page() -> None:
     edit_tab, delete_tab = st.tabs(["✏️ Editar produto", "🗑️ Excluir produto"])
     options = {f"{row.nome_produto} ({row.id_produto})": row.id_produto for row in products.itertuples()}
     with edit_tab:
+        if st.session_state.get("edit_selected_product") not in options:
+            st.session_state.pop("edit_selected_product", None)
         selected_label = st.selectbox("Produto para editar", list(options), key="edit_selected_product")
         selected_id = options[selected_label]
-        selected = products[products["id_produto"].astype(str) == str(selected_id)].iloc[0].to_dict()
-        submitted, name, category, size, color, material, price, cost, kit, barcode, image_url = product_form(selected, f"edit_product_{selected_id}", product_id=selected_id)
-        if submitted:
-            missing = required_fields({
-                "Nome do produto": name,
-                "Categoria": category,
-                "Tamanho": size,
-                "Cor/tema": color,
-                "Material": material,
-                "Kit": kit,
-                "Preço": price,
-                "Custo": cost,
-            })
-            if missing:
-                st.error(f"Preencha os campos obrigatórios: {', '.join(missing)}.")
-                return
-            result = run(lambda: edit_product(selected_id, name, category, size, color, material, number(price, "O preco"), number(cost, "O custo"), kit, barcode, image_url))
-            if result is not False:
-                st.success(f"Produto atualizado. SKU: {result}")
-                st.rerun()
+        product_editor(products[products["id_produto"].astype(str) == str(selected_id)].iloc[0].to_dict())
     with delete_tab:
         selected_label = st.selectbox("Produto para excluir", list(options), key="delete_selected_product")
         selected_id = options[selected_label]
-        st.warning("A exclusão remove a linha do cadastro PRODUTOS.")
+        st.warning("A exclusão remove o produto e sua ficha técnica. Produtos com produção registrada não podem ser excluídos.")
         if st.button("Excluir produto", type="secondary"):
             st.session_state.confirm_delete = selected_id
         if st.session_state.get("confirm_delete") == selected_id:
@@ -319,7 +180,9 @@ def manage_page() -> None:
 def auxiliary_page() -> None:
     st.title("🧩 Cadastros auxiliares")
     definitions = [("Categorias", "categorias"), ("Tamanhos", "tamanhos"), ("Cores", "cores"), ("Materiais", "materiais"), ("Kits", "kits")]
-    tabs = st.tabs([label for label, _ in definitions])
+    tabs = st.tabs([label for label, _ in definitions] + ["Fiscal"])
+    with tabs[-1]:
+        fiscal_page()
     for tab, (label, kind) in zip(tabs, definitions):
         with tab:
             notice = st.session_state.pop(f"notice_{kind}", None)
@@ -328,14 +191,16 @@ def auxiliary_page() -> None:
             with st.form(f"new_{kind}"):
                 name = st.text_input("Nome", key=f"{kind}_name")
                 abbrev = st.text_input("Abreviação", key=f"{kind}_abbrev")
+                ncm = st.text_input("NCM (opcional)", key=f"{kind}_ncm", help="8 dígitos, ex.: 4820.10.00. Os produtos da categoria usam este NCM.") if kind == "categorias" else ""
                 enabled = st.checkbox("Ativo", True, key=f"{kind}_active")
                 submitted = st.form_submit_button("Cadastrar")
             if submitted:
-                if run(lambda: add_domain(kind, name, abbrev, enabled)) is not False:
+                if run(lambda: add_domain(kind, name, abbrev, enabled, ncm)) is not False:
                     st.success(f"{label} cadastrado.")
                     st.rerun()
             frame = table(kind)
-            st.dataframe(frame, use_container_width=True, hide_index=True)
+            shown = frame.assign(ncm=frame["ncm"].map(format_ncm)).rename(columns={"ncm": "NCM"}) if kind == "categorias" else frame
+            st.dataframe(shown, use_container_width=True, hide_index=True)
             if frame.empty:
                 st.info("Cadastre um item para poder editar ou excluir.")
                 continue
@@ -351,10 +216,11 @@ def auxiliary_page() -> None:
                 with st.form(f"edit_{item_key}"):
                     edited_name = st.text_input("Nome", value=str(selected["nome"]), key=f"edit_name_{item_key}")
                     edited_abbrev = st.text_input("Abreviação", value=str(selected["abreviacao"]), key=f"edit_abbrev_{item_key}")
+                    edited_ncm = st.text_input("NCM (opcional)", value=format_ncm(selected["ncm"]), key=f"edit_ncm_{item_key}") if kind == "categorias" else ""
                     edited_enabled = st.checkbox("Ativo", value=str(selected["ativo"]).casefold() in ["sim", "true", "1"], key=f"edit_active_{item_key}")
                     save = st.form_submit_button("Salvar alterações")
                 if save:
-                    if run(lambda: edit_domain(kind, identifier, edited_name, edited_abbrev, edited_enabled)) is not False:
+                    if run(lambda: edit_domain(kind, identifier, edited_name, edited_abbrev, edited_enabled, edited_ncm)) is not False:
                         st.session_state[f"notice_{kind}"] = "Item atualizado."
                         st.rerun()
                 st.warning(f"Excluir remove permanentemente o item {selected['nome']} ({identifier}).")
@@ -367,6 +233,53 @@ def auxiliary_page() -> None:
                     elif run(lambda: delete_domain(kind, identifier)) is not False:
                         st.session_state[f"notice_{kind}"] = "Item excluído."
                         st.rerun()
+
+
+def fiscal_page() -> None:
+    st.caption("Códigos usados no anúncio e na nota fiscal. O código marcado como padrão é sugerido em novos produtos. Confirme os códigos com sua contabilidade.")
+    kind = st.segmented_control("Tabela fiscal", list(fiscal.KINDS), format_func=lambda k: fiscal.KINDS[k]["label"],
+                                default="cfop_estadual", key="fiscal_kind", label_visibility="collapsed") or "cfop_estadual"
+    spec = fiscal.KINDS[kind]
+    if notice := st.session_state.pop("notice_fiscal", None):
+        st.success(notice)
+    records = fiscal.items(kind)
+    with st.form(f"new_fiscal_{kind}", clear_on_submit=True):
+        code = st.text_input("Código", help=f"{spec['digits']} dígito(s)")
+        description = st.text_input("Descrição")
+        cols = st.columns(2)
+        is_default = cols[0].checkbox("Usar como padrão em novos produtos")
+        enabled = cols[1].checkbox("Ativo", True)
+        if st.form_submit_button("Cadastrar"):
+            if run(lambda: fiscal.save(kind, code, description, is_default, enabled)) is not False:
+                st.session_state.notice_fiscal = f"{spec['label']} cadastrado."
+                st.rerun()
+    st.dataframe(pd.DataFrame([{"Código": fiscal.display_code(kind, r["codigo"]), "Descrição": r["descricao"],
+                                "Padrão": "Sim" if r.get("padrao") else "", "Ativo": "Sim" if r["ativo"] else "Não"} for r in records]),
+                 hide_index=True, use_container_width=True)
+    if not records:
+        st.info("Nenhum código cadastrado.")
+        return
+    with st.expander("✏️ Alterar ou excluir um código"):
+        by_code = {r["codigo"]: r for r in records}
+        selected = by_code[st.selectbox("Código", list(by_code), format_func=lambda c: fiscal.label(kind, by_code[c]), key=f"fiscal_selected_{kind}")]
+        with st.form(f"edit_fiscal_{kind}_{selected['codigo']}_{selected['revision']}"):
+            description = st.text_input("Descrição", selected["descricao"])
+            cols = st.columns(2)
+            is_default = cols[0].checkbox("Padrão em novos produtos", bool(selected.get("padrao")))
+            enabled = cols[1].checkbox("Ativo", bool(selected["ativo"]))
+            st.caption("O código não pode ser alterado. Para corrigir um código, cadastre o novo e desative ou exclua o antigo.")
+            if st.form_submit_button("Salvar alterações"):
+                if run(lambda: fiscal.save(kind, None, description, is_default, enabled, previous=selected)) is not False:
+                    st.session_state.notice_fiscal = "Código atualizado."
+                    st.rerun()
+        with st.form(f"delete_fiscal_{kind}_{selected['codigo']}"):
+            confirmed = st.checkbox("Confirmo a exclusão deste código")
+            if st.form_submit_button("Excluir código"):
+                if not confirmed:
+                    st.error("Confirme a exclusão antes de continuar.")
+                elif run(lambda: fiscal.delete(kind, selected["codigo"], fiscal_in_use(kind, selected["codigo"]))) is not False:
+                    st.session_state.notice_fiscal = "Código excluído."
+                    st.rerun()
 
 
 def dashboard() -> None:
@@ -392,7 +305,7 @@ navigation = {
     "Início": "🏠 Início",
     "Produtos": "🔎 Consultar Produtos",
     "Matérias-primas": "📦 Matérias-primas e estoque",
-    "Ficha e preço": "🧾 Ficha e preço",
+    "Produção": "🏭 Produção",
     "Custos de produção": "⏱️ Custos de produção",
     "Cadastros": "🧩 Catálogos auxiliares",
     "Migração": "🔄 Migrar catálogo",
@@ -431,6 +344,10 @@ if st.session_state._active_page in product_routes.values():
              key='product_action', label_visibility='collapsed', on_change=change_product_action)
 page = st.session_state._active_page
 st.session_state.page = page  # compatibility with existing links and sessions
+if not catalog_dynamo.enabled() and page != "🔄 Migrar catálogo":
+    # Never fall back to the spreadsheet silently.
+    st.warning("O catálogo de produtos está sendo lido do **Google Sheets**. Se a migração já foi feita, "
+               "configure `[catalog] backend = \"dynamodb\"` nos Secrets do app.")
 try:
     {
         "🔎 Consultar Produtos": dashboard,
@@ -439,7 +356,7 @@ try:
         "🧩 Catálogos auxiliares": auxiliary_page,
         "📦 Matérias-primas e estoque": inventory_page,
         "🏠 Início": home_page,
-        "🧾 Ficha e preço": recipe_page,
+        "🏭 Produção": production_page,
         "⏱️ Custos de produção": costs_page,
         "🔄 Migrar catálogo": migration_page,
     }[page]()

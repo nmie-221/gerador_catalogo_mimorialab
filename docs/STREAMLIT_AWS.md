@@ -35,16 +35,17 @@ A permissão GetItem usada no teste não permite salvar. Anexe a seguinte polít
     "Effect": "Allow",
     "Action": [
       "dynamodb:GetItem",
+      "dynamodb:BatchGetItem",
       "dynamodb:Query",
       "dynamodb:PutItem",
-      "dynamodb:TransactWriteItems"
+      "dynamodb:DeleteItem"
     ],
     "Resource": "arn:aws:dynamodb:sa-east-1:SEU_ID_DA_CONTA:table/mimorialab-dev"
   }]
 }
 ```
 
-As operações Put das transações também requerem PutItem. Não são necessários Scan, DeleteTable ou AdministratorAccess. Não altere a role de infraestrutura para autenticar a aplicação.
+Não existe permissão IAM `TransactWriteItems`: as transações são autorizadas pelas ações de cada item. As gravações requerem PutItem e as exclusões (produtos, cadastros auxiliares e fiscais) requerem DeleteItem. BatchGetItem acelera a leitura do catálogo; sem ela o app continua funcionando, porém lendo um registro por vez. Não são necessários Scan, DeleteTable ou AdministratorAccess. Não altere a role de infraestrutura para autenticar a aplicação.
 
 A tabela atual PK/SK atende aos novos registros; nenhuma mudança Terraform é necessária.
 

@@ -122,8 +122,8 @@ class ProductionTests(unittest.TestCase):
             app = AppTest.from_file(str(Path(__file__).resolve().parents[1]/'app.py'))
             app.session_state['authenticated'] = True
             app.run(timeout=20)
-            for page in ['🏠 Início', '📦 Matérias-primas e estoque', '⏱️ Custos de produção', '🧾 Ficha e preço', '🧩 Catálogos auxiliares', '🔎 Consultar Produtos']:
-                nav = {'🏠 Início':'Início','📦 Matérias-primas e estoque':'Matérias-primas','⏱️ Custos de produção':'Custos de produção','🧾 Ficha e preço':'Ficha e preço','🧩 Catálogos auxiliares':'Cadastros','🔎 Consultar Produtos':'Produtos'}
+            for page in ['🏠 Início', '📦 Matérias-primas e estoque', '⏱️ Custos de produção', '🏭 Produção', '🧩 Catálogos auxiliares', '🔎 Consultar Produtos']:
+                nav = {'🏠 Início':'Início','📦 Matérias-primas e estoque':'Matérias-primas','⏱️ Custos de produção':'Custos de produção','🏭 Produção':'Produção','🧩 Catálogos auxiliares':'Cadastros','🔎 Consultar Produtos':'Produtos'}
                 next(w for w in app.get('button_group') if w.key == 'main_navigation').set_value(nav[page]).run(timeout=20)
                 self.assertFalse(app.exception, page)
             next(w for w in app.get('button_group') if w.key == 'main_navigation').set_value('Custos de produção').run()
@@ -136,14 +136,6 @@ class ProductionTests(unittest.TestCase):
             app.run()
             self.assertEqual(app.session_state['page'], '⏱️ Custos de produção')
             self.assertEqual(next(n for n in app.number_input if n.label == 'Valor da hora (R$)').value, 25.)
-            next(w for w in app.get('button_group') if w.key == 'main_navigation').set_value('Ficha e preço').run()
-            name = next(t for t in app.text_input if t.label == 'Nome da plataforma')
-            name.set_value('Shopee teste')
-            next(b for b in app.button if b.label == 'Adicionar plataforma').click().run()
-            self.assertFalse(app.exception)
-            self.assertEqual(repo.product_costs('P001')['platforms'][0]['name'], 'Shopee teste')
-            self.assertEqual(repo.product_costs('P002')['platforms'], [])
-            self.assertTrue(any(b.label == 'Aplicar preço ao produto' for b in app.button))
 
     def ui_app(self):
         products = pd.DataFrame([dict(id_produto='P001', nome_produto='Teste', categoria='A1', tamanho='A1', cor='A1', material='A1', preco=20, custo=5, qtd_kit='A1', sku='SKU', codigo_barras='', imagem_url='')])
@@ -211,22 +203,30 @@ class ProductionTests(unittest.TestCase):
         self.field(app, 'number_input', 'Embalagens compradas').set_value(2.)
         self.click(app, 'Confirmar movimentação')
         self.assertEqual(store.get(repo.MATERIALS, mid)['stock'], 1000)
-        self.navigate(app, 'Ficha e preço')
-        self.click(app, 'Adicionar à ficha')
-        self.assertEqual(repo.product_costs('P001')['recipe'][0]['material_id'], mid)
-        self.field(app, 'text_input', 'Nome da plataforma').set_value('Venda teste')
-        self.field(app, 'number_input', 'Comissão máxima (%)').set_value(10.)
-        self.click(app, 'Adicionar plataforma')
-        self.assertEqual(len(repo.product_costs('P001')['platforms']), 1)
-        self.field(app, 'checkbox', 'Confirmo atualizar o preço e o custo do produto no catálogo').check().run()
-        with patch('views.production.update_row') as update:
-            self.click(app, 'Aplicar preço ao produto')
+        # Single product screen: add the material to the recipe and save.
+        app.session_state['_active_page'] = '⚙️ Editar ou excluir'
+        app.run()
+        self.assertFalse(app.exception)
+        app.button(key='pedit_P001_add_recipe').click().run()
+        rid = app.session_state['pedit_P001_recipe'][0]
+        app.selectbox(key=f'pedit_P001_mat_{rid}').select(mid)
+        app.number_input(key=f'pedit_P001_qty_{rid}').set_value(1.)
+        with patch('repositories.data.update_row') as update:
+            app.button(key='pedit_P001_save').click().run()
+        self.assertFalse(app.exception)
+        self.assertFalse(app.error)
         update.assert_called_once()
-        self.assertEqual(app.session_state['page'], '🧾 Ficha e preço')
-        self.field(app, 'checkbox', 'Confirmo a produção e a baixa dos materiais').check()
-        self.click(app, 'Confirmar produção')
+        row = update.call_args.args[2]
+        self.assertEqual(row[7], 5.07)  # 5.00 typed earlier is kept as a recipe line + 0.07 of paper
+        self.assertEqual(row[10], '')  # barcode column preserved, not edited
+        self.assertEqual(repo.product_costs('P001')['recipe'][0]['material_id'], mid)
+        self.assertEqual(repo.product_costs('P001')['extras'][0]['name'], 'Custo informado anteriormente')
+        self.navigate(app, 'Produção')
+        self.field(app, 'checkbox', 'Confirmo a produção e a baixa dos materiais').check().run()
+        self.click(app, 'Registrar produção')
         self.assertEqual(store.get(repo.MATERIALS, mid)['stock'], 999)
-        self.assertEqual(app.session_state['page'], '🧾 Ficha e preço')
+        self.assertEqual(app.session_state['page'], '🏭 Produção')
+        self.assertEqual(repo.productions()[0]['product_name'], 'Teste (P001)')
 
     def test_save_failure_stays_on_form_and_displays_error(self):
         app = self.ui_app()

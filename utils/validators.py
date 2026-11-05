@@ -36,6 +36,21 @@ def abbreviation(value: object) -> str:
     return result
 
 
+def ncm(value: object) -> str:
+    """Optional NCM: 8 digits, accepted with or without dots (4820.10.00)."""
+    text = clean(value).replace(".", "").replace(" ", "")
+    if not text:
+        return ""
+    if not re.fullmatch(r"\d{8}", text):
+        raise ValueError("O NCM deve ter 8 dígitos, por exemplo 4820.10.00.")
+    return text
+
+
+def format_ncm(value: object) -> str:
+    text = clean(value)
+    return f"{text[:4]}.{text[4:6]}.{text[6:]}" if re.fullmatch(r"\d{8}", text) else text
+
+
 def number(value: object, label: str, minimum: float = 0) -> float:
     try:
         if isinstance(value, str):
