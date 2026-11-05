@@ -28,7 +28,7 @@ def enabled():
     return backend_setting() == "dynamodb"
 
 
-def diagnose(max_product=300):
+def diagnose(max_product=60):
     """Count records per partition the app reads, plus legacy/unindexed data."""
     indexed = {item["SK"] for item in db.query(INDEX)}
     report = {"Lista de produtos (" + INDEX + ")": len(indexed)}
@@ -37,7 +37,8 @@ def diagnose(max_product=300):
     legacy = {kind: len(db.query(pk)) for kind, pk in LEGACY_DOMAINS.items() if pk != DOMAINS[kind]}
     try:
         # Three batched reads; one-by-one reads would take minutes.
-        found = db.batch_get([key("produtos", f"P{i:03d}") for i in range(1, max_product + 1)], fallback=False)
+        # Eventually consistent reads cost half the capacity.
+        found = db.batch_get([key("produtos", f"P{i:03d}") for i in range(1, max_product + 1)], fallback=False, consistent=False)
     except db.BatchDenied:
         return dict(report=report, legacy=legacy, products=None, unindexed=[])
     details = sorted(pk.rsplit("#", 1)[-1] for pk, _ in found)

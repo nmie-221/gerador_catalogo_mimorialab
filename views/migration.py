@@ -79,7 +79,7 @@ def diagnostics():
         st.warning("A política AWS ainda não tem dynamodb:BatchGetItem, então não foi possível procurar produtos fora da lista. "
                    "Inclua essa permissão (ela também deixa o app mais rápido) e execute de novo.")
     else:
-        st.write(f"**Produtos encontrados (P001 a P300):** {len(result['products'])}"
+        st.write(f"**Produtos encontrados (P001 a P060):** {len(result['products'])}"
                  + (f" · sem entrada na lista: {', '.join(result['unindexed'])}" if result["unindexed"] else ""))
     legacy = {k: v for k, v in result["legacy"].items() if v}
     if legacy:

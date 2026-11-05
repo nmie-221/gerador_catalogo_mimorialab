@@ -1,4 +1,5 @@
 """DynamoDB persistence with paginated queries and optimistic concurrency."""
+import time
 from decimal import Decimal
 
 import boto3
@@ -59,6 +60,9 @@ def _error(exc):
                 return ConflictError('Os dados mudaram em outra sessão ou a operação já foi registrada. Atualize a tela antes de tentar novamente.')
         if code in ['AccessDeniedException', 'AccessDenied']:
             return StorageError('Acesso AWS negado. A aplicação precisa de GetItem, BatchGetItem, Query, PutItem e DeleteItem na tabela configurada. Veja docs/STREAMLIT_AWS.md.')
+        if code in ['ProvisionedThroughputExceededException', 'ThrottlingException', 'RequestLimitExceeded']:
+            return StorageError('O DynamoDB recusou a operação por limite de capacidade da tabela. Aguarde alguns segundos e tente de novo. '
+                                'Para acabar com isso, mude a tabela para o modo sob demanda (veja docs/STREAMLIT_AWS.md).')
         if code == 'ResourceNotFoundException':
             return StorageError('Tabela DynamoDB não encontrada. Confira table_name e a região nos Secrets.')
     return StorageError('Não foi possível acessar o DynamoDB. Confira a conexão, os Secrets e as permissões.')
@@ -126,7 +130,7 @@ class BatchDenied(StorageError):
     pass
 
 
-def batch_get(keys, fallback=True):
+def batch_get(keys, fallback=True, consistent=True):
     """Read many (PK, SK) pairs, 100 per request, retrying unprocessed keys."""
     unique = list(dict.fromkeys((str(pk), str(sk)) for pk, sk in keys))
     found = {}
@@ -134,8 +138,10 @@ def batch_get(keys, fallback=True):
         client, table = _client()
         for start in range(0, len(unique), 100):
             pending = {table: {'Keys': [_encode({'PK': pk, 'SK': sk}) for pk, sk in unique[start:start + 100]],
-                               'ConsistentRead': True}}
-            for _ in range(5):
+                               'ConsistentRead': consistent}}
+            for attempt in range(6):
+                if attempt:
+                    time.sleep(0.2 * 2 ** attempt)  # back off when capacity is exhausted
                 response = client.batch_get_item(RequestItems=pending)
                 for raw in response.get('Responses', {}).get(table, []):
                     item = _decode(raw)
