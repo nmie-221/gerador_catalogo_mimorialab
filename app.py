@@ -98,7 +98,7 @@ def domain_select(frame: pd.DataFrame, label: str, key: str, selected_id: str | 
     return options[selected]
 
 
-def product_form(values: dict | None = None, form_key: str = "new_product", before_pricing=None, product_id=None) -> tuple:
+def product_form(values: dict | None = None, form_key: str = "new_product", product_id=None) -> tuple:
     values = values or {}
     def decimal_text(value: object) -> str:
         try:
