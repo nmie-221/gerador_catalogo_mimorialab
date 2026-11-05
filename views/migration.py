@@ -28,7 +28,7 @@ def migration_page():
             if missing:
                 raise ValueError(f"Referências inexistentes em {kind}: {sorted(missing)}")
         results = {kind: catalog.import_sheet(kind, frames[kind], dry_run=True) for kind in KINDS}
-    except (ValueError, KeyError, db.StorageError, Exception) as exc:
+    except Exception as exc:
         st.error(f"Validação não concluída: {exc}")
         return
     st.subheader("Prévia da importação")
