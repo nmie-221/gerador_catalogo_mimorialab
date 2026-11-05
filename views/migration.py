@@ -56,15 +56,25 @@ def diagnostics():
     st.subheader("Diagnóstico dos dados no DynamoDB")
     aws = st.secrets.get("aws", {})
     st.caption(f"Tabela: {aws.get('table_name', '?')} · Região: {aws.get('region', '?')}")
-    try:
-        result = catalog.diagnose()
-    except db.StorageError as exc:
-        st.error(str(exc))
+    if st.button("Executar diagnóstico"):
+        st.session_state.pop("catalog_diagnosis", None)
+        try:
+            with st.spinner("Consultando o DynamoDB..."):
+                st.session_state.catalog_diagnosis = catalog.diagnose()
+        except db.StorageError as exc:
+            st.error(str(exc))
+            return
+    result = st.session_state.get("catalog_diagnosis")
+    if result is None:
         return
     st.write("**Registros encontrados nas chaves que o app lê:**")
     st.table({"Chave": list(result["report"]), "Registros": list(result["report"].values())})
-    st.write(f"**Produtos encontrados (P001 a P300):** {len(result['products'])}"
-             + (f" · sem entrada na lista: {', '.join(result['unindexed'])}" if result["unindexed"] else ""))
+    if result["products"] is None:
+        st.warning("A política AWS ainda não tem dynamodb:BatchGetItem, então não foi possível procurar produtos fora da lista. "
+                   "Inclua essa permissão (ela também deixa o app mais rápido) e execute de novo.")
+    else:
+        st.write(f"**Produtos encontrados (P001 a P300):** {len(result['products'])}"
+                 + (f" · sem entrada na lista: {', '.join(result['unindexed'])}" if result["unindexed"] else ""))
     legacy = {k: v for k, v in result["legacy"].items() if v}
     if legacy:
         st.write("**Cadastros gravados no formato antigo (em inglês):** " + ", ".join(f"{k}: {v}" for k, v in legacy.items()))
@@ -76,6 +86,7 @@ def diagnostics():
             except db.StorageError as exc:
                 st.error(str(exc))
             else:
+                st.session_state.pop("catalog_diagnosis", None)
                 st.success(f"{created} chave(s) criada(s). Abra Produtos para conferir.")
     elif not any(result["report"].values()):
         st.error("Nenhum registro encontrado nas chaves conhecidas. Confira se table_name e region acima são os da tabela "
