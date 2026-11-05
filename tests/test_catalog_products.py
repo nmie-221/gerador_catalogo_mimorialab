@@ -107,6 +107,18 @@ class CatalogProductTests(DynamoCase):
         self.assertFalse(plan[0]['ok'])
         self.assertEqual(repo.max_producible(plan), 3)
 
+    def test_diagnose_and_repair_unindexed_products_and_legacy_domains(self):
+        data.save_product(None, self.values(), self.costs())
+        store.put(dict(PK='MIMORIALAB#PRODUCT#P002', SK='DETAILS', revision=1, id_produto='P002', nome_produto='Solto', sku='X2'))
+        store.put(dict(PK='MIMORIALAB#CATALOG#COLORS', SK='COR009', id='COR009', nome='Azul', abreviacao='AZ', ativo='Sim', revision=1))
+        result = catalog_dynamo.diagnose(5)
+        self.assertEqual(result['unindexed'], ['P002'])
+        self.assertEqual(result['legacy']['cores'], 1)
+        self.assertEqual(catalog_dynamo.repair(), 2)
+        self.assertEqual(catalog_dynamo.repair(), 0)  # idempotent
+        self.assertEqual(sorted(data.table('produtos')['id_produto']), ['P001', 'P002'])
+        self.assertIn('COR009', set(data.table('cores')['id']))
+
 
 class FiscalTests(DynamoCase):
     def test_defaults_are_seeded_and_single(self):
