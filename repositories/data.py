@@ -11,7 +11,17 @@ from utils.validators import abbreviation, clean, normalize, number, required, u
 
 
 def table(kind: str) -> pd.DataFrame:
-    return dynamo.read(kind) if dynamo.enabled() else read_sheet(SHEETS[kind]).copy()
+    frame = dynamo.read(kind) if dynamo.enabled() else read_sheet(SHEETS[kind]).copy()
+    if kind == "produtos" and dynamo.enabled() and not frame.empty:
+        from repositories import production
+        config = production.settings()
+        items = production.materials()
+        frame = frame.copy()
+        for index, row in frame.iterrows():
+            costs = production.product_costs(row["id_produto"])
+            if costs["recipe"] or costs["minutes"] or costs["prints"] or costs["other"]:
+                frame.at[index, "custo"] = float(production.breakdown(costs, config, items)["total"])
+    return frame
 
 
 def active(kind: str) -> pd.DataFrame:
