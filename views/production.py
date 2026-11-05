@@ -261,7 +261,11 @@ def recipe_page():
         st.subheader('Tempo e impressão')
         with st.form(f"production_params_{pid}_{data['revision']}"):
             updated = deepcopy(data)
-            updated['minutes'] = n('Tempo por produto (minutos)', data['minutes'])
+            total_minutes = int(float(data['minutes']))
+            time_cols = st.columns(2)
+            hours = time_cols[0].number_input('Horas por produto', min_value=0, value=total_minutes // 60, step=1)
+            minutes = time_cols[1].number_input('Minutos por produto', min_value=0, max_value=59, value=total_minutes % 60, step=1)
+            updated['minutes'] = hours * 60 + minutes
             profiles = ['']+[p['id'] for p in config['prints']]
             updated['print_id'] = st.selectbox('Perfil de impressão', profiles, index=profiles.index(data['print_id']) if data['print_id'] in profiles else 0, format_func=lambda i: 'Sem impressão' if not i else next(p['name'] for p in config['prints'] if p['id'] == i))
             updated['prints'] = st.number_input('Lados impressos por produto', min_value=0, value=int(data['prints']))

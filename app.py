@@ -98,7 +98,7 @@ def domain_select(frame: pd.DataFrame, label: str, key: str, selected_id: str | 
     return options[selected]
 
 
-def product_form(values: dict | None = None, form_key: str = "new_product", before_pricing=None, product_id=None) -> tuple:
+def product_form(values: dict | None = None, form_key: str = "new_product", product_id=None) -> tuple:
     values = values or {}
     def decimal_text(value: object) -> str:
         try:
@@ -107,10 +107,7 @@ def product_form(values: dict | None = None, form_key: str = "new_product", befo
             return "0.00"
 
     categories, sizes, colors, materials, kits = (active(kind) for kind in ("categorias", "tamanhos", "cores", "materiais", "kits"))
-    if before_pricing:
-        characteristics_tab, simulation_tab, pricing_tab = st.tabs(["Características", "Simulação", "Preço e dados finais"])
-    else:
-        characteristics_tab = simulation_tab = pricing_tab = st.container()
+    characteristics_tab, pricing_tab = st.tabs(["Características", "Preço e dados finais"])
 
     with characteristics_tab:
         st.subheader("Características do produto")
@@ -120,15 +117,28 @@ def product_form(values: dict | None = None, form_key: str = "new_product", befo
         color = domain_select(colors, "Cor/tema", f"{form_key}_color", values.get("cor"))
         material = domain_select(materials, "Material", f"{form_key}_material", values.get("material"))
         kit = domain_select(kits, "Kit", f"{form_key}_kit", values.get("qtd_kit"))
-    with simulation_tab:
-        if before_pricing:
-            before_pricing()
     with pricing_tab:
         st.subheader("Preço e dados finais")
         with st.form(form_key):
             st.caption("Informe os valores em reais, por exemplo: 7,63 ou 7.63.")
             price = st.text_input("Preço", value=decimal_text(values.get("preco", st.session_state.get(f"{form_key}_price", 0))), key=f"{form_key}_price")
-            cost = st.text_input("Custo", value=decimal_text(values.get("custo", st.session_state.get(f"{form_key}_cost", 0))), key=f"{form_key}_cost")
+            calculated_cost = None
+            if product_id:
+                try:
+                    from repositories import production as production_repo
+                    technical = production_repo.product_costs(product_id)
+                    if technical.get("recipe") or technical.get("minutes") or technical.get("prints") or technical.get("other"):
+                        calculated_cost = production_repo.breakdown(technical, production_repo.settings(), production_repo.materials())
+                except (StorageError, ValueError, KeyError) as exc:
+                    st.warning(f"Não foi possível calcular a ficha técnica: {exc}")
+            if calculated_cost is not None:
+                cost = f"{calculated_cost['total']:.2f}"
+                st.metric("Custo de produção calculado", f"R$ {calculated_cost['total']:.2f}")
+                st.caption("Materiais: R$ {:.2f} | Impressão: R$ {:.2f} | Mão de obra: R$ {:.2f} | Outros: R$ {:.2f}".format(
+                    calculated_cost['materials'], calculated_cost['printing'], calculated_cost['labor'], calculated_cost['other']))
+            else:
+                cost = st.text_input("Custo provisório (R$)", value=decimal_text(values.get("custo", 0)), key=f"{form_key}_cost")
+                st.caption("Após salvar o produto, preencha a ficha técnica em Produção para calcular o custo automaticamente.")
             barcode = st.text_input("Código de barras (opcional)", value=str(values.get("codigo_barras", "")))
             image_url = st.text_input("URL da imagem (opcional)", value=str(values.get("imagem_url", "")))
             try:
@@ -142,58 +152,10 @@ def product_form(values: dict | None = None, form_key: str = "new_product", befo
     return submitted, name, category, size, color, material, price, cost, kit, barcode, image_url
 
 
-def marketplace_simulator() -> None:
-    from repositories.production import settings
-    try:
-        defaults = {p['name'].casefold(): p for p in settings().get('marketplace_defaults', [])}
-    except StorageError:
-        defaults = {}
-    ml = defaults.get('mercado livre', {})
-    shopee = defaults.get('shopee', {})
-    simulation_fields = st.columns(4)
-    cost_text = simulation_fields[0].text_input("Custo (R$)", value="0.00", key="new_marketplace_cost")
-    margin_text = simulation_fields[1].text_input("Margem de lucro (%)", value="30.00", key="new_marketplace_margin")
-    mercado_livre_fee_text = simulation_fields[2].text_input("Taxa Mercado Livre (%)", value=f"{float(ml.get('commission', 20)):.2f}", key="new_mercado_livre_fee")
-    shopee_fee_text = simulation_fields[3].text_input("Taxa Shopee (%)", value=f"{float(shopee.get('commission', 14)):.2f}", key="new_shopee_fee")
-
-    def parse_simulation_value(value: str) -> float:
-        try:
-            parsed = float(value)
-            return max(parsed, 0.0)
-        except ValueError:
-            return 0.0
-
-    cost = parse_simulation_value(cost_text)
-    profit_margin = parse_simulation_value(margin_text)
-    mercado_livre_fee = min(parse_simulation_value(mercado_livre_fee_text), 99.99)
-    shopee_fee = min(parse_simulation_value(shopee_fee_text), 99.99)
-    from utils.pricing import quote
-    try:
-        mercado_livre_price = float(quote(cost, mercado_livre_fee, ml.get('fixed', 0), ml.get('freight', 0), profit_margin)['price'])
-        shopee_price = float(quote(cost, shopee_fee, shopee.get('fixed', 0), shopee.get('freight', 0), profit_margin)['price'])
-    except ValueError as exc:
-        st.error(str(exc))
-        return
-    st.caption("Simulação com comissão, tarifa fixa e frete padrão configurados em Custos de produção. Confirme tarifas por faixa de preço.")
-    result_columns = st.columns(2)
-    result_columns[0].metric("Preço sugerido Mercado Livre", f"R$ {mercado_livre_price:.2f}")
-    result_columns[1].metric("Preço sugerido Shopee", f"R$ {shopee_price:.2f}")
-    action_columns = st.columns(2)
-    if action_columns[0].button("Usar preço Mercado Livre", key="use_mercado_livre_price", use_container_width=True):
-        st.session_state["new_product_price"] = f"{mercado_livre_price:.2f}"
-        st.session_state["new_product_cost"] = f"{cost:.2f}"
-        st.rerun()
-    if action_columns[1].button("Usar preço Shopee", key="use_shopee_price", use_container_width=True):
-        st.session_state["new_product_price"] = f"{shopee_price:.2f}"
-        st.session_state["new_product_cost"] = f"{cost:.2f}"
-        st.rerun()
-    st.caption("Use um dos valores sugeridos no campo Preço abaixo, se desejar.")
-
-
 def register_page() -> None:
     st.title("📝 Cadastrar produto")
     st.caption("✨ O SKU é gerado automaticamente por categoria, tamanho, cor, kit e material.")
-    submitted, name, category, size, color, material, price, cost, kit, barcode, image_url = product_form(before_pricing=marketplace_simulator)
+    submitted, name, category, size, color, material, price, cost, kit, barcode, image_url = product_form()
     if submitted:
         missing = required_fields({
             "Nome do produto": name,
