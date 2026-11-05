@@ -12,7 +12,7 @@ def migration_page():
     st.warning("Antes de migrar, interrompa edições no Google Sheets e faça uma cópia da planilha.")
     if catalog.enabled():
         st.success("O catálogo já está configurado para usar o DynamoDB.")
-        st.info("Para conferir novamente a origem, altere temporariamente [catalog] backend para sheets.")
+        diagnostics()
         return
     if not st.secrets.get("aws"):
         st.error("Configure os Secrets da AWS antes de continuar.")
@@ -50,3 +50,35 @@ def migration_page():
             st.success("Importação concluída e IDs conferidos. Ative [catalog] backend = 'dynamodb' nos Secrets e reinicie o app.")
         except (ValueError, db.StorageError) as exc:
             st.error(f"Importação interrompida: {exc}. Corrija e execute novamente; registros já gravados serão preservados.")
+
+
+def diagnostics():
+    st.subheader("Diagnóstico dos dados no DynamoDB")
+    aws = st.secrets.get("aws", {})
+    st.caption(f"Tabela: {aws.get('table_name', '?')} · Região: {aws.get('region', '?')}")
+    try:
+        result = catalog.diagnose()
+    except db.StorageError as exc:
+        st.error(str(exc))
+        return
+    st.write("**Registros encontrados nas chaves que o app lê:**")
+    st.table({"Chave": list(result["report"]), "Registros": list(result["report"].values())})
+    st.write(f"**Produtos encontrados (P001 a P300):** {len(result['products'])}"
+             + (f" · sem entrada na lista: {', '.join(result['unindexed'])}" if result["unindexed"] else ""))
+    legacy = {k: v for k, v in result["legacy"].items() if v}
+    if legacy:
+        st.write("**Cadastros gravados no formato antigo (em inglês):** " + ", ".join(f"{k}: {v}" for k, v in legacy.items()))
+    if result["unindexed"] or legacy:
+        st.warning("Há dados que o app não enxerga. O reparo só cria as chaves que faltam; nada é alterado nem apagado.")
+        if st.button("Reparar chaves", type="primary"):
+            try:
+                created = catalog.repair()
+            except db.StorageError as exc:
+                st.error(str(exc))
+            else:
+                st.success(f"{created} chave(s) criada(s). Abra Produtos para conferir.")
+    elif not any(result["report"].values()):
+        st.error("Nenhum registro encontrado nas chaves conhecidas. Confira se table_name e region acima são os da tabela "
+                 "onde você vê os dados e me envie o PK/SK de alguns itens.")
+    else:
+        st.info("As chaves estão consistentes.")

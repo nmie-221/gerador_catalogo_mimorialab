@@ -346,8 +346,10 @@ page = st.session_state._active_page
 st.session_state.page = page  # compatibility with existing links and sessions
 if not catalog_dynamo.enabled() and page != "🔄 Migrar catálogo":
     # Never fall back to the spreadsheet silently.
+    sections = ", ".join(str(k) for k in st.secrets.keys()) or "nenhuma"
     st.warning("O catálogo de produtos está sendo lido do **Google Sheets**. Se a migração já foi feita, "
-               "configure `[catalog] backend = \"dynamodb\"` nos Secrets do app.")
+               "configure `[catalog] backend = \"dynamodb\"` nos Secrets do app. "
+               f"Seções encontradas nos Secrets: {sections}. Valor lido: `{catalog_dynamo.backend_setting()}`.")
 try:
     {
         "🔎 Consultar Produtos": dashboard,

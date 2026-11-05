@@ -9,8 +9,61 @@ INDEX = "MIMORIALAB#CATALOG#PRODUCTS"
 DOMAINS = {k: "MIMORIALAB#CATALOG#" + k.upper() for k in SHEETS if k != "produtos"}
 
 
+LEGACY_DOMAINS = {  # partitions written by an earlier version of the migration
+    "categorias": "MIMORIALAB#CATALOG#CATEGORIES", "tamanhos": "MIMORIALAB#CATALOG#SIZES",
+    "cores": "MIMORIALAB#CATALOG#COLORS", "materiais": "MIMORIALAB#CATALOG#MATERIALS", "kits": "MIMORIALAB#CATALOG#KITS",
+}
+
+
+def backend_setting():
+    """Value of [catalog] backend, tolerating common placements in the Secrets."""
+    for section in ("catalog", "aws"):
+        value = st.secrets.get(section, {})
+        if hasattr(value, "get") and value.get("backend"):
+            return str(value.get("backend")).strip().lower()
+    return str(st.secrets.get("backend", "sheets")).strip().lower()
+
+
 def enabled():
-    return str(st.secrets.get("catalog", {}).get("backend", "sheets")).lower() == "dynamodb"
+    return backend_setting() == "dynamodb"
+
+
+def diagnose(max_product=300):
+    """Count records per partition the app reads, plus legacy/unindexed data."""
+    report = {"Lista de produtos (" + INDEX + ")": len(db.query(INDEX))}
+    for kind, pk in DOMAINS.items():
+        report[kind + " (" + pk + ")"] = len(db.query(pk))
+    legacy = {kind: len(db.query(pk)) for kind, pk in LEGACY_DOMAINS.items()}
+    indexed = {item["SK"] for item in db.query(INDEX)}
+    found = db.batch_get([key("produtos", f"P{i:03d}") for i in range(1, max_product + 1)])
+    details = sorted(pk.rsplit("#", 1)[-1] for pk, _ in found)
+    return dict(report=report, legacy=legacy, products=details, unindexed=[p for p in details if p not in indexed])
+
+
+def repair():
+    """Create missing product index entries and copy legacy domain partitions.
+
+    Only inserts (conditional on the key not existing); never changes or deletes data.
+    """
+    result = diagnose()
+    created = 0
+    for pid in result["unindexed"]:
+        try:
+            db.put({"PK": INDEX, "SK": pid, "revision": 1})
+            created += 1
+        except db.ConflictError:
+            pass
+    for kind, pk in LEGACY_DOMAINS.items():
+        for item in db.query(pk):
+            copy = dict(item, PK=DOMAINS[kind], SK=str(item.get("id") or item["SK"]))
+            copy.setdefault("id", copy["SK"])
+            copy["revision"] = int(copy.get("revision", 1) or 1)
+            try:
+                db.put(copy)
+                created += 1
+            except db.ConflictError:
+                pass
+    return created
 
 
 def identifier(kind, row):
