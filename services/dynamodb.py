@@ -108,3 +108,26 @@ def transaction(items, token):
         client.transact_write_items(TransactItems=[{'Put': {'TableName': table, **write_request(item, expected)}} for item, expected in items], ClientRequestToken=token)
     except (ClientError, BotoCoreError) as exc:
         raise _error(exc) from exc
+
+
+def delete(pk, sk):
+    """Delete a record only if it exists."""
+    try:
+        client, table = _client()
+        client.delete_item(TableName=table, Key=_encode({'PK': pk, 'SK': sk}),
+                           ConditionExpression='attribute_exists(PK)')
+    except (ClientError, BotoCoreError) as exc:
+        raise _error(exc) from exc
+
+
+def delete_many(keys):
+    """Atomically delete existing records, including catalog indexes."""
+    try:
+        client, table = _client()
+        client.transact_write_items(TransactItems=[
+            {'Delete': {'TableName': table, 'Key': _encode({'PK': pk, 'SK': sk}),
+                        'ConditionExpression': 'attribute_exists(PK)'}}
+            for pk, sk in keys
+        ])
+    except (ClientError, BotoCoreError) as exc:
+        raise _error(exc) from exc

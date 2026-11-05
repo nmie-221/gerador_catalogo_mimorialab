@@ -8,7 +8,6 @@ import streamlit as st
 from repositories import production as repo
 from repositories.data import table
 from services import dynamodb as store
-from services.google_sheets import update_row
 from utils.pricing import quote
 
 
@@ -314,18 +313,18 @@ def recipe_page():
         price = max(r['price'] for _, r in results) if selected == 'highest' else next(r['price'] for p, r in results if p['id'] == selected)
         confirm = st.checkbox('Confirmo atualizar o preço e o custo do produto no catálogo')
         if st.button('Aplicar preço ao produto', disabled=not confirm or (selected == 'highest' and invalid)):
-            # Refresh physical row position before writing the existing catalog.
-            from services.google_sheets import read_sheet
-            read_sheet.clear()
+            from repositories.data import edit_product
             fresh = table('produtos')
-            positions = [i for i, value in enumerate(fresh['id_produto']) if str(value) == pid]
-            if len(positions) != 1:
-                st.error('Produto não encontrado ou ID duplicado. Atualize a página.')
+            matched = fresh[fresh['id_produto'].astype(str) == str(pid)]
+            if len(matched) != 1:
+                st.error('Produto não encontrado ou ID duplicado.')
             else:
-                position = positions[0]
-                row = fresh.iloc[position].tolist()
-                row[6], row[7] = float(price), float(costs['total'])
-                action(lambda: update_row('PRODUTOS', position+2, row), 'Preço e custo aplicados ao catálogo.')
+                product = matched.iloc[0]
+                action(lambda: edit_product(
+                    pid, product['nome_produto'], product['categoria'], product['tamanho'],
+                    product['cor'], product['material'], float(price), float(costs['total']),
+                    product['qtd_kit'], product['codigo_barras'], product['imagem_url']
+                ), 'Preço e custo aplicados ao catálogo.')
     else:
         st.info('Cadastre as plataformas deste produto para comparar preços.')
     with st.expander('Registrar produção e baixar estoque'):

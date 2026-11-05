@@ -12,6 +12,7 @@ from services.google_sheets import SheetsError
 from utils.validators import number, required_fields
 from utils.total_cost import estimate_for_product
 from views.production import inventory_page, costs_page, recipe_page, home_page
+from views.migration import migration_page
 from services.dynamodb import StorageError
 
 st.set_page_config(page_title="Catálogo de Produtos", page_icon="📦", layout="wide")
@@ -80,7 +81,7 @@ st.markdown(
 def run(action):
     try:
         return action()
-    except (SheetsError, ValueError, KeyError) as exc:
+    except (SheetsError, StorageError, ValueError, KeyError) as exc:
         st.error(str(exc))
         return False
 
@@ -394,6 +395,7 @@ navigation = {
     "Ficha e preço": "🧾 Ficha e preço",
     "Custos de produção": "⏱️ Custos de produção",
     "Cadastros": "🧩 Catálogos auxiliares",
+    "Migração": "🔄 Migrar catálogo",
 }
 product_routes = {"Consultar": "🔎 Consultar Produtos", "Cadastrar": "📝 Cadastrar produto", "Editar ou excluir": "⚙️ Editar ou excluir"}
 # Keep the route outside widget-owned keys: Streamlit cleans up widget state
@@ -439,6 +441,7 @@ try:
         "🏠 Início": home_page,
         "🧾 Ficha e preço": recipe_page,
         "⏱️ Custos de produção": costs_page,
+        "🔄 Migrar catálogo": migration_page,
     }[page]()
 except (SheetsError, StorageError, ValueError) as exc:
     st.error(str(exc))
