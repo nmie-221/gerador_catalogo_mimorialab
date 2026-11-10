@@ -12,7 +12,6 @@ from services.auth import is_authenticated, login_screen
 from services.google_sheets import SheetsError
 from views.production import inventory_page, costs_page, production_page, home_page
 from views.product_form import product_editor
-from views.migration import migration_page
 from services.dynamodb import StorageError
 from utils.validators import format_ncm
 
@@ -308,7 +307,6 @@ navigation = {
     "Produção": "🏭 Produção",
     "Custos de produção": "⏱️ Custos de produção",
     "Cadastros": "🧩 Catálogos auxiliares",
-    "Migração": "🔄 Migrar catálogo",
 }
 product_routes = {"Consultar": "🔎 Consultar Produtos", "Cadastrar": "📝 Cadastrar produto", "Editar ou excluir": "⚙️ Editar ou excluir"}
 # Keep the route outside widget-owned keys: Streamlit cleans up widget state
@@ -344,7 +342,7 @@ if st.session_state._active_page in product_routes.values():
              key='product_action', label_visibility='collapsed', on_change=change_product_action)
 page = st.session_state._active_page
 st.session_state.page = page  # compatibility with existing links and sessions
-if not catalog_dynamo.enabled() and page != "🔄 Migrar catálogo":
+if not catalog_dynamo.enabled():
     # Never fall back to the spreadsheet silently.
     sections = ", ".join(str(k) for k in st.secrets.keys()) or "nenhuma"
     st.warning("O catálogo de produtos está sendo lido do **Google Sheets**. Se a migração já foi feita, "
@@ -360,7 +358,6 @@ try:
         "🏠 Início": home_page,
         "🏭 Produção": production_page,
         "⏱️ Custos de produção": costs_page,
-        "🔄 Migrar catálogo": migration_page,
     }[page]()
 except (SheetsError, StorageError, ValueError) as exc:
     st.error(str(exc))

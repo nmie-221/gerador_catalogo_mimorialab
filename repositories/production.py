@@ -66,6 +66,16 @@ def materials():
     return store.query(MATERIALS)
 
 
+COST_MODES = {'pack': 'Calcular pelo preço da embalagem', 'unit': 'Informar o preço por unidade de uso'}
+
+
+def unit_cost(m):
+    """Cost of one unit of use: typed directly, or pack price / units per pack."""
+    if m.get('cost_mode') == 'unit':
+        return decimal(m.get('unit_price') or 0)
+    return decimal(m['price'])/decimal(m['per'], positive=True)
+
+
 def save_material(data):
     value = deepcopy(data)
     if not all(isinstance(value.get(k), str) and value[k].strip() for k in ['name', 'brand', 'pack', 'unit']):
@@ -73,6 +83,12 @@ def save_material(data):
     value['per'] = decimal(value['per'], 'Quantidade por embalagem', positive=True)
     for key in ['price', 'minimum', 'stock']:
         value[key] = decimal(value.get(key, 0), key)
+    value['cost_mode'] = value.get('cost_mode') or 'pack'
+    if value['cost_mode'] not in COST_MODES:
+        raise ValueError('Forma de custo inválida.')
+    value['unit_price'] = decimal(value.get('unit_price') or 0, 'Preço por unidade de uso')
+    if value['cost_mode'] == 'unit' and not value['unit_price']:
+        raise ValueError('Informe o preço por unidade de uso.')
     if 'PK' not in value:
         value.update(PK=MATERIALS, SK=uuid4().hex, revision=0, stock=Decimal(0))
     else:
@@ -176,7 +192,7 @@ def breakdown(data, config, items):
         m = known.get(row['material_id'])
         if not m:
             raise ValueError('Matéria-prima da ficha não encontrada.')
-        material_cost += decimal(m['price'])/decimal(m['per'], positive=True)*decimal(row['quantity'])
+        material_cost += unit_cost(m)*decimal(row['quantity'])
     labor = hourly(config)*decimal(data['minutes'])/60
     p = next((p for p in config['prints'] if p['id'] == data['print_id']), None)
     if data['prints'] and p is None:

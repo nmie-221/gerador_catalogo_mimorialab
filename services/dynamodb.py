@@ -126,11 +126,7 @@ def transaction(items, token=None, deletes=()):
         raise _error(exc) from exc
 
 
-class BatchDenied(StorageError):
-    pass
-
-
-def batch_get(keys, fallback=True, consistent=True):
+def batch_get(keys, consistent=True):
     """Read many (PK, SK) pairs, 100 per request, retrying unprocessed keys."""
     unique = list(dict.fromkeys((str(pk), str(sk)) for pk, sk in keys))
     found = {}
@@ -154,8 +150,6 @@ def batch_get(keys, fallback=True, consistent=True):
     except ClientError as exc:
         if exc.response['Error']['Code'] not in ['AccessDeniedException', 'AccessDenied']:
             raise _error(exc) from exc
-        if not fallback:
-            raise BatchDenied('A política AWS não permite dynamodb:BatchGetItem.') from exc
         # Policies created before BatchGetItem was needed still work, only slower.
         found = {}
         for pk, sk in unique:

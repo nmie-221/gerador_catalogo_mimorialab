@@ -107,41 +107,6 @@ class CatalogProductTests(DynamoCase):
         self.assertFalse(plan[0]['ok'])
         self.assertEqual(repo.max_producible(plan), 3)
 
-    def test_diagnose_and_repair_unindexed_products_and_legacy_domains(self):
-        data.save_product(None, self.values(), self.costs())
-        store.put(dict(PK='MIMORIALAB#PRODUCT#P002', SK='DETAILS', revision=1, id_produto='P002', nome_produto='Solto', sku='X2'))
-        store.put(dict(PK='MIMORIALAB#CATALOG#COLORS', SK='COR009', id='COR009', nome='Azul', abreviacao='AZ', ativo='Sim', revision=1))
-        result = catalog_dynamo.diagnose(5)
-        self.assertEqual(result['unindexed'], ['P002'])
-        self.assertEqual(result['legacy']['cores'], 1)
-        self.assertEqual(catalog_dynamo.repair(), 2)
-        self.assertEqual(catalog_dynamo.repair(), 0)  # idempotent
-        self.assertEqual(sorted(data.table('produtos')['id_produto']), ['P001', 'P002'])
-        self.assertIn('COR009', set(data.table('cores')['id']))
-
-    def test_diagnose_without_batch_permission_is_fast_and_explicit(self):
-        from botocore.exceptions import ClientError
-        client, _ = store._client()
-        denied = ClientError({'Error': {'Code': 'AccessDeniedException', 'Message': 'no'}}, 'BatchGetItem')
-        with patch.object(client, 'batch_get_item', side_effect=denied), patch.object(store, 'get') as get:
-            result = catalog_dynamo.diagnose()
-            get.assert_not_called()
-        self.assertIsNone(result['products'])
-
-    def test_import_products_from_sheet_with_old_columns(self):
-        import pandas as pd
-        from services.google_sheets import HEADERS
-        old = [dict(id_produto='P007', nome_produto='Antigo', categoria='CAT001', tamanho='TAM001', cor='COR001', material='MAT001',
-                    preco=12.92, custo=8.3, qtd_kit='KIT001', sku='007OP', codigo_barras='00123', imagem_url='')]
-        frame = pd.DataFrame(old, columns=HEADERS['PRODUTOS']).fillna('')  # as read from a sheet without the new headers
-        self.assertEqual(catalog_dynamo.import_sheet('produtos', frame, dry_run=True)['pending'], 1)
-        catalog_dynamo.import_sheet('produtos', frame, dry_run=False)
-        product = data.table('produtos').iloc[0]
-        self.assertEqual((product['id_produto'], float(product['preco']), product['codigo_barras']), ('P007', 12.92, '00123'))
-        self.assertEqual(catalog_dynamo.import_sheet('produtos', frame, dry_run=True)['pending'], 0)
-        self.assertEqual(catalog_dynamo.diagnose(10)['legacy'], {k: 0 for k in ['categorias', 'tamanhos', 'cores', 'materiais']})
-
-
 class FiscalTests(DynamoCase):
     def test_defaults_are_seeded_and_single(self):
         self.assertEqual(fiscal.default_code(fiscal.items('cfop_estadual')), '5102')

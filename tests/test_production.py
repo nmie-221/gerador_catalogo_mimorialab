@@ -254,6 +254,23 @@ class ProductionTests(unittest.TestCase):
             repo.save_material(dict(name='Papel', brand=None, pack='Resma', per=500, unit='folha', price=35, minimum=0, active=True))
         self.assertEqual(repo.materials(), [])
 
+    def test_material_with_typed_unit_price(self):
+        repo.save_material(dict(name='Fita', brand='M', pack='Rolo', per=30, unit='metro', price=12, minimum=0, active=True, stock=0,
+                                cost_mode='unit', unit_price=0.55))
+        m = repo.materials()[0]
+        self.assertEqual(repo.unit_cost(m), Decimal('0.55'))
+        repo.move(m['SK'], 'Entrada de compra', 1, str(uuid4()), price=30)  # price paid does not change the typed cost
+        m = store.get(repo.MATERIALS, m['SK'])
+        self.assertEqual(repo.unit_cost(m), Decimal('0.55'))
+        data = repo.product_costs('P001')
+        data['recipe'] = [dict(material_id=m['SK'], quantity=2)]
+        self.assertEqual(repo.breakdown(data, repo.settings(), repo.materials())['materials'], Decimal('1.10'))
+        m['cost_mode'] = 'pack'
+        repo.save_material(m)
+        self.assertEqual(repo.unit_cost(store.get(repo.MATERIALS, m['SK'])), 1)
+        with self.assertRaises(ValueError):
+            repo.save_material(dict(name='X', brand='M', pack='Rolo', per=1, unit='u', price=1, minimum=0, active=True, stock=0, cost_mode='unit', unit_price=0))
+
     def test_query_reads_all_pages(self):
         for i in range(4):
             store.put(dict(PK='PAGED', SK=str(i), payload='x'*300000))

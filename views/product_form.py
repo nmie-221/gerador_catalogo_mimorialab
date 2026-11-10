@@ -18,7 +18,7 @@ from services import dynamodb as store
 from utils.pricing import decimal, quote
 from utils.total_cost import estimate
 from utils.validators import format_ncm
-from views.production import PURCHASE_UNITS, USAGE_UNITS, money, suggested_input
+from views.production import PURCHASE_UNITS, USAGE_UNITS, cost_fields, money, suggested_input
 
 DOMAINS = [("categoria", "categorias", "Categoria"), ("tamanho", "tamanhos", "Tamanho"), ("cor", "cores", "Cor/tema"),
            ("material", "materiais", "Material"), ("qtd_kit", "kits", "Kit")]
@@ -161,11 +161,13 @@ def _new_material_form(fk, items):
             price = c2.number_input("Preço de uma embalagem (R$)", min_value=0.0, value=0.0)
             minimum = c1.number_input("Estoque mínimo (unidade de uso)", min_value=0.0, value=0.0)
             packs = c2.number_input("Embalagens que você já tem (opcional)", min_value=0.0, value=0.0)
+            mode, unit_price = cost_fields(key=fk)
             quantity = st.number_input("Consumo por produto (unidade de uso)", min_value=0.000001, value=1.0, format="%g")
             if st.form_submit_button("Cadastrar e incluir na ficha"):
                 try:
                     material = repo.save_material(dict(name=name, brand=brand, pack=pack or "", per=per, unit=unit or "",
-                                                       price=price, minimum=minimum, stock=0, active=True))
+                                                       price=price, minimum=minimum, stock=0, active=True,
+                                                       cost_mode=mode, unit_price=unit_price))
                     if packs:
                         repo.move(material["SK"], "Entrada de compra", packs, str(uuid4()), price, "Saldo inicial informado no cadastro do produto")
                 except (store.StorageError, ValueError) as exc:
@@ -192,7 +194,7 @@ def _recipe(fk, items, config):
                                format_func=lambda i: f"{known[i]['name']} · {known[i]['brand']} ({known[i]['unit']})" if i in known else "Material não encontrado")
         m = known.get(mid)
         c2.number_input("Consumo" + (f" ({m['unit']})" if m else ""), min_value=0.000001, format="%g", key=f"{fk}_qty_{rid}")
-        line = decimal(m["price"]) / decimal(m["per"], positive=True) * decimal(ss[f"{fk}_qty_{rid}"]) if m else 0
+        line = repo.unit_cost(m) * decimal(ss[f"{fk}_qty_{rid}"]) if m else 0
         c3.caption(f"{money(line)}")
         c4.button("✕", key=f"{fk}_rm_recipe_{rid}", help="Remover da ficha", on_click=_remove_row, args=(fk, "recipe", rid))
     if not selectable:
