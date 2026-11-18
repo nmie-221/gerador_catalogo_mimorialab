@@ -70,6 +70,8 @@ def _load(fk, product, costs, config, fiscal_tables):
     ss[_key(fk, "print_id")] = costs["print_id"] if any(x["id"] == costs["print_id"] for x in config["prints"]) else ""
     ss[_key(fk, "prints")] = int(costs["prints"])
     ss[_key(fk, "margin")] = _num(costs["margin"])
+    ss[_key(fk, "mat_manual")] = bool(costs.get("materials_manual"))
+    ss[_key(fk, "mat_cost")] = _num(costs.get("materials_cost"))
     for group in ["recipe", "extras", "platforms"]:
         ss[_key(fk, group)] = []
     for row in costs["recipe"]:
@@ -103,6 +105,7 @@ def _collect_costs(fk):
         recipe=[dict(material_id=ss[f"{fk}_mat_{r}"], quantity=ss[f"{fk}_qty_{r}"]) for r in ss[_key(fk, "recipe")] if ss.get(f"{fk}_mat_{r}")],
         minutes=ss[_key(fk, "minutes")], print_id=ss[_key(fk, "print_id")] or "", prints=ss[_key(fk, "prints")],
         other=0, margin=ss[_key(fk, "margin")],
+        materials_manual=ss[_key(fk, "mat_manual")], materials_cost=ss[_key(fk, "mat_cost")],
         extras=[dict(name=ss[f"{fk}_xname_{r}"], value=ss[f"{fk}_xval_{r}"]) for r in ss[_key(fk, "extras")]],
         platforms=[dict(id=r, name=ss[f"{fk}_pname_{r}"].strip(), commission=ss[f"{fk}_pcom_{r}"], fixed=ss[f"{fk}_pfix_{r}"], freight=ss[f"{fk}_pfre_{r}"])
                    for r in ss[_key(fk, "platforms")]],
@@ -196,6 +199,16 @@ def _recipe(fk, items, config):
     st.button("＋ Adicionar matéria-prima à ficha", key=_key(fk, "add_recipe"), on_click=_add_row,
               args=(fk, "recipe"), kwargs=dict(mat=None, qty=1.0), disabled=not selectable)
     _new_material_form(fk, items)
+    calculated = sum((repo.unit_cost(known[ss[f"{fk}_mat_{r}"]]) * decimal(ss[f"{fk}_qty_{r}"])
+                      for r in ss[_key(fk, "recipe")] if ss.get(f"{fk}_mat_{r}") in known), Decimal(0))
+    manual = st.checkbox("Definir o custo total de matérias-primas manualmente", key=_key(fk, "mat_manual"),
+                         help="A lista acima continua sendo usada para dar baixa no estoque ao registrar produção.")
+    if manual:
+        c1, c2 = st.columns(2)
+        c1.number_input("Custo total de matérias-primas por unidade (R$)", min_value=0.0, format="%.2f", key=_key(fk, "mat_cost"))
+        c2.caption(f"Calculado pela ficha: {money(calculated)}")
+    else:
+        st.caption(f"Custo de matérias-primas calculado pela ficha: {money(calculated)}")
 
     st.markdown("**Mão de obra e impressão**")
     c1, c2, c3 = st.columns(3)
@@ -327,7 +340,7 @@ def product_editor(product=None):
     with st.container(border=True, key=f"card_summary_{fk}"):
         st.subheader("Resumo do custo")
         cols = st.columns(5)
-        for column, (label, value) in zip(cols, [("Materiais", parts["materials"]), ("Mão de obra", parts["labor"]), ("Impressão", parts["printing"]),
+        for column, (label, value) in zip(cols, [("Materiais (manual)" if parts.get("materials_manual") else "Materiais", parts["materials"]), ("Mão de obra", parts["labor"]), ("Impressão", parts["printing"]),
                                                   ("Outros", parts["other"]), ("Custo de produção", parts["total"])]):
             column.metric(label, money(value))
         price = _num(ss[_key(fk, "price")])

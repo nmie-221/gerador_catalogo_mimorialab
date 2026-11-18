@@ -121,7 +121,8 @@ def costs_key(pid):
 
 def empty_costs(pid):
     pk, sk = costs_key(pid)
-    return dict(PK=pk, SK=sk, revision=0, recipe=[], platforms=[], minutes=0, print_id='', prints=0, other=0, extras=[], margin=30)
+    return dict(PK=pk, SK=sk, revision=0, recipe=[], platforms=[], minutes=0, print_id='', prints=0, other=0, extras=[], margin=30,
+                materials_manual=False, materials_cost=0)
 
 
 def _with_defaults(pid, data):
@@ -141,7 +142,7 @@ def product_costs_many(pids):
 
 
 def has_costs(data):
-    return bool(data['recipe'] or data['minutes'] or data['prints'] or data['other'] or data.get('extras'))
+    return bool(data['recipe'] or data['minutes'] or data['prints'] or data['other'] or data.get('extras') or data.get('materials_manual'))
 
 
 def prepare_product_costs(data):
@@ -186,6 +187,8 @@ def prepare_product_costs(data):
             raise ValueError('Informe a descrição de cada custo adicional.')
         extras.append(dict(name=name, value=amount))
     value['extras'] = extras
+    value['materials_manual'] = bool(value.get('materials_manual'))
+    value['materials_cost'] = decimal(value.get('materials_cost') or 0, 'Custo de matérias-primas')
     expected = value['revision'] or None
     value['revision'] += 1
     return value, expected
@@ -205,13 +208,17 @@ def breakdown(data, config, items):
         if not m:
             raise ValueError('Matéria-prima da ficha não encontrada.')
         material_cost += unit_cost(m)*decimal(row['quantity'])
+    calculated = material_cost
+    if data.get('materials_manual'):
+        # The recipe still drives stock deduction; only its cost is replaced.
+        material_cost = decimal(data.get('materials_cost') or 0)
     labor = hourly(config)*decimal(data['minutes'])/60
     p = next((p for p in config['prints'] if p['id'] == data['print_id']), None)
     if data['prints'] and p is None:
         raise ValueError('Perfil de impressão não encontrado.')
     printing = print_rate(p)*decimal(data['prints']) if p else Decimal(0)
     other = decimal(data['other'])+sum((decimal(row['value']) for row in data.get('extras', [])), Decimal(0))
-    return dict(materials=material_cost, labor=labor, printing=printing, other=other, total=material_cost+labor+printing+other)
+    return dict(materials=material_cost, materials_calculated=calculated, materials_manual=bool(data.get('materials_manual')), labor=labor, printing=printing, other=other, total=material_cost+labor+printing+other)
 
 
 def move(material_id, kind, quantity, token, price=0, note=''):
