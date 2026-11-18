@@ -66,37 +66,33 @@ def materials():
     return store.query(MATERIALS)
 
 
-COST_MODES = {'pack': 'Calcular pelo preço da embalagem', 'unit': 'Informar o preço por unidade de uso'}
-
-
 def unit_cost(m):
-    """Cost of one unit of use: typed directly, or pack price / units per pack."""
-    if m.get('cost_mode') == 'unit':
+    """Cost of one unit of use, as typed in the material registration.
+
+    Materials registered before this field existed fall back to pack price /
+    units per pack until they are edited.
+    """
+    if m.get('cost_mode') == 'unit' or m.get('unit_price'):
         return decimal(m.get('unit_price') or 0)
-    return decimal(m['price'])/decimal(m['per'], positive=True)
+    return decimal(m.get('price') or 0)/decimal(m.get('per') or 1, positive=True)
 
 
 def save_material(data):
     value = deepcopy(data)
-    if not all(isinstance(value.get(k), str) and value[k].strip() for k in ['name', 'brand', 'pack', 'unit']):
-        raise ValueError('Preencha nome, marca e unidades de compra e uso.')
-    value['per'] = decimal(value['per'], 'Quantidade por embalagem', positive=True)
-    for key in ['price', 'minimum', 'stock']:
+    if not all(isinstance(value.get(k), str) and value[k].strip() for k in ['name', 'brand', 'unit']):
+        raise ValueError('Preencha nome, marca e unidade de uso.')
+    for key in ['minimum', 'stock']:
         value[key] = decimal(value.get(key, 0), key)
-    value['cost_mode'] = value.get('cost_mode') or 'pack'
-    if value['cost_mode'] not in COST_MODES:
-        raise ValueError('Forma de custo inválida.')
-    value['unit_price'] = decimal(value.get('unit_price') or 0, 'Preço por unidade de uso')
-    if value['cost_mode'] == 'unit' and not value['unit_price']:
-        raise ValueError('Informe o preço por unidade de uso.')
+    value['unit_price'] = decimal(value.get('unit_price') or 0, 'Preço por unidade de uso', positive=True)
+    value['cost_mode'] = 'unit'
     if 'PK' not in value:
         value.update(PK=MATERIALS, SK=uuid4().hex, revision=0, stock=Decimal(0))
     else:
         previous = store.get(MATERIALS, value['SK'])
         if not previous or previous['revision'] != value['revision']:
             raise store.ConflictError('Material alterado em outra sessão. Atualize a página.')
-        if any(value[k] != previous[k] for k in ['unit', 'per', 'stock']):
-            raise ValueError('Unidade, quantidade por embalagem e saldo não podem ser alterados no cadastro. Use movimentações para mudar o estoque.')
+        if any(value[k] != previous[k] for k in ['unit', 'stock']):
+            raise ValueError('Unidade de uso e saldo não podem ser alterados no cadastro. Use movimentações para mudar o estoque.')
     expected = value['revision'] or None
     value['revision'] += 1
     store.put(value, expected)
@@ -209,9 +205,9 @@ def move(material_id, kind, quantity, token, price=0, note=''):
     if not m or not m['active']:
         raise ValueError('Escolha uma matéria-prima ativa.')
     qty = decimal(quantity, 'Quantidade', positive=True)
+    paid = decimal(price or 0, 'Preço pago')
     if kind == 'Entrada de compra':
-        qty *= decimal(m['per'], positive=True)
-        m['price'] = decimal(price, 'Preço da embalagem')
+        pass  # quantity is in the unit of use; the price paid is history only
     elif kind in ['Perda', 'Ajuste de saída']:
         qty = -qty
     elif kind != 'Ajuste de entrada':
@@ -222,7 +218,7 @@ def move(material_id, kind, quantity, token, price=0, note=''):
         raise ValueError('Estoque insuficiente. Nenhuma alteração foi feita.')
     revision = m['revision']
     m.update(stock=decimal(m['stock'])+qty, revision=revision+1)
-    event = dict(PK=EVENTS, SK=token, date=timestamp(), type=kind, material_id=material_id, material_name=m['name'], quantity=qty, unit=m['unit'], price=m['price'], note=note)
+    event = dict(PK=EVENTS, SK=token, date=timestamp(), type=kind, material_id=material_id, material_name=m['name'], quantity=qty, unit=m['unit'], unit_cost=unit_cost(m), price_paid=paid, note=note)
     store.transaction([(m, revision), (event, None)], token)
 
 

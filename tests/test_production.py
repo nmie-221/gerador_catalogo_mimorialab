@@ -35,15 +35,15 @@ class ProductionTests(unittest.TestCase):
         self.addCleanup(self.connection.stop)
 
     def add_material(self, name='Papel', stock=500):
-        repo.save_material(dict(name=name, brand='Marca', pack='Resma', per=500, unit='folha', price=35, minimum=50, active=True, stock=0))
+        repo.save_material(dict(name=name, brand='Marca', unit='folha', unit_price=.07, minimum=50, active=True, stock=0))
         m = next(m for m in repo.materials() if m['name'] == name)
         repo.move(m['SK'], 'Ajuste de entrada', stock, str(uuid4()), note='Saldo inicial')
         return store.get(repo.MATERIALS, m['SK'])
 
     def test_money_and_conservative_price(self):
         m = self.add_material()
-        self.assertIsInstance(m['price'], Decimal)
-        self.assertEqual(m['price']/m['per'], Decimal('.07'))
+        self.assertEqual(repo.unit_cost(m), Decimal('.07'))
+        self.assertIsInstance(m['unit_price'], Decimal)
         result = quote(10, 10, 4, 12, 30)
         self.assertEqual(result['price'], Decimal('43.34'))
         self.assertGreaterEqual(result['margin'], 30)
@@ -56,8 +56,9 @@ class ProductionTests(unittest.TestCase):
         repo.move(m['SK'], 'Entrada de compra', 2, token, price=40)
         repo.move(m['SK'], 'Entrada de compra', 2, token, price=40)
         current = store.get(repo.MATERIALS, m['SK'])
-        self.assertEqual(current['stock'], 1500)
-        self.assertEqual(current['price'], 40)
+        self.assertEqual(current['stock'], 502)  # quantity is in the unit of use
+        self.assertEqual(repo.unit_cost(current), Decimal('.07'))  # price paid does not change the cost
+        self.assertEqual(store.get(repo.EVENTS, token)['price_paid'], 40)
         before = len(store.query(repo.EVENTS))
         with self.assertRaises(ValueError):
             repo.move(m['SK'], 'Perda', 2000, str(uuid4()), note='Perda')
@@ -194,13 +195,13 @@ class ProductionTests(unittest.TestCase):
         next(w for w in app.get('button_group') if w.key == 'inventory_section').set_value('Cadastrar matéria-prima').run()
         self.field(app, 'text_input', 'Nome').set_value('Papel teste')
         self.field(app, 'text_input', 'Marca').set_value('Minha marca livre')
-        self.field(app, 'number_input', 'Preço de uma embalagem (R$)').set_value(35.)
+        self.field(app, 'number_input', 'Preço por unidade de uso (R$)').set_value(.07)
         self.click(app, 'Salvar matéria-prima')
         self.assertEqual(app.session_state['page'], '📦 Matérias-primas e estoque')
         self.assertEqual(repo.materials()[0]['brand'], 'Minha marca livre')
         mid = repo.materials()[0]['SK']
         next(w for w in app.get('button_group') if w.key == 'inventory_section').set_value('Registrar entrada').run()
-        self.field(app, 'number_input', 'Embalagens compradas').set_value(2.)
+        self.field(app, 'number_input', 'Quantidade (folha)').set_value(1000.)
         self.click(app, 'Confirmar movimentação')
         self.assertEqual(store.get(repo.MATERIALS, mid)['stock'], 1000)
         # Single product screen: add the material to the recipe and save.
@@ -251,25 +252,20 @@ class ProductionTests(unittest.TestCase):
             self.assertTrue(select.call_args.kwargs['accept_new_options'])
             self.assertEqual(select.call_args.kwargs['index'], 1)
         with self.assertRaises(ValueError):
-            repo.save_material(dict(name='Papel', brand=None, pack='Resma', per=500, unit='folha', price=35, minimum=0, active=True))
+            repo.save_material(dict(name='Papel', brand=None, unit='folha', unit_price=.07, minimum=0, active=True))
         self.assertEqual(repo.materials(), [])
 
-    def test_material_with_typed_unit_price(self):
-        repo.save_material(dict(name='Fita', brand='M', pack='Rolo', per=30, unit='metro', price=12, minimum=0, active=True, stock=0,
-                                cost_mode='unit', unit_price=0.55))
-        m = repo.materials()[0]
-        self.assertEqual(repo.unit_cost(m), Decimal('0.55'))
-        repo.move(m['SK'], 'Entrada de compra', 1, str(uuid4()), price=30)  # price paid does not change the typed cost
-        m = store.get(repo.MATERIALS, m['SK'])
-        self.assertEqual(repo.unit_cost(m), Decimal('0.55'))
-        data = repo.product_costs('P001')
-        data['recipe'] = [dict(material_id=m['SK'], quantity=2)]
-        self.assertEqual(repo.breakdown(data, repo.settings(), repo.materials())['materials'], Decimal('1.10'))
-        m['cost_mode'] = 'pack'
-        repo.save_material(m)
-        self.assertEqual(repo.unit_cost(store.get(repo.MATERIALS, m['SK'])), 1)
+    def test_material_requires_unit_price_and_legacy_fallback(self):
         with self.assertRaises(ValueError):
-            repo.save_material(dict(name='X', brand='M', pack='Rolo', per=1, unit='u', price=1, minimum=0, active=True, stock=0, cost_mode='unit', unit_price=0))
+            repo.save_material(dict(name='X', brand='M', unit='u', unit_price=0, minimum=0, active=True, stock=0))
+        # Materials registered with the old pack fields keep working until edited.
+        legacy = dict(PK=repo.MATERIALS, SK='OLD', revision=1, name='Fita', brand='M', unit='metro', pack='Rolo', per=Decimal(30),
+                      price=Decimal(12), minimum=0, stock=Decimal(10), active=True)
+        store.put(legacy)
+        self.assertEqual(repo.unit_cost(legacy), Decimal('0.4'))
+        edited = dict(store.get(repo.MATERIALS, 'OLD'), unit_price=0.55)
+        repo.save_material(edited)
+        self.assertEqual(repo.unit_cost(store.get(repo.MATERIALS, 'OLD')), Decimal('0.55'))
 
     def test_query_reads_all_pages(self):
         for i in range(4):

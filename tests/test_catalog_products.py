@@ -29,7 +29,7 @@ class DynamoCase(unittest.TestCase):
             self.addCleanup(target.stop)
         for kind in ['categorias', 'tamanhos', 'cores', 'materiais', 'kits']:
             data.add_domain(kind, 'Opção', 'OP', True, '4820.10.00')
-        repo.save_material(dict(name='Papel', brand='B', pack='Resma', per=500, unit='folha', price=35, minimum=0, stock=0, active=True))
+        repo.save_material(dict(name='Papel', brand='B', unit='folha', unit_price=.07, minimum=0, stock=0, active=True))
         self.material = repo.materials()[0]['SK']
 
     def values(self, **extra):
@@ -58,7 +58,7 @@ class CatalogProductTests(DynamoCase):
         self.assertEqual(data.catalog().iloc[0]['NCM'], '4820.10.00')
         # A material price change is reflected in the live cost.
         material = repo.materials()[0]
-        material['price'] = 70
+        material['unit_price'] = .14
         repo.save_material(material)
         self.assertAlmostEqual(float(data.table('produtos').iloc[0]['custo']), 2.9)
 
