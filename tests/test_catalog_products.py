@@ -62,6 +62,16 @@ class CatalogProductTests(DynamoCase):
         repo.save_material(material)
         self.assertAlmostEqual(float(data.table('produtos').iloc[0]['custo']), 2.9)
 
+    def test_manual_material_cost_keeps_recipe_for_stock(self):
+        data.save_product(None, self.values(), self.costs(materials_manual=True, materials_cost='3,00'))
+        self.assertAlmostEqual(float(data.table('produtos').iloc[0]['custo']), 4.5)  # 3,00 manual + 1,50 embalagem
+        parts = repo.breakdown(repo.product_costs('P001'), repo.settings(), repo.materials())
+        self.assertEqual(parts['materials_calculated'], Decimal('0.70'))
+        repo.move(self.material, 'Ajuste de entrada', 100, str(uuid4()), note='Saldo')
+        repo.produce('P001', 2, str(uuid4()), 'Caderno')
+        self.assertEqual(store.get(repo.MATERIALS, self.material)['stock'], 80)  # recipe still deducts stock
+        self.assertEqual(repo.productions()[0]['unit_cost'], Decimal('4.5'))
+
     def test_failed_recipe_write_does_not_save_product(self):
         with patch.object(repo, 'materials', side_effect=[[], []]):
             with self.assertRaises(ValueError):
