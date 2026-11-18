@@ -152,9 +152,10 @@ def inventory_page():
                 unit_price=unit_price_input(key='new'),
                 minimum=n('Estoque mínimo na unidade de uso'), stock=0, active=True,
             )
+            stock = n('Quantidade em estoque hoje (unidade de uso)')
             st.caption('Selecione uma unidade sugerida ou digite uma nova. O preço é o custo de uma unidade de uso (ex.: uma folha, um metro).')
             if st.form_submit_button('Salvar matéria-prima'):
-                action(lambda: repo.save_material(data), 'Matéria-prima cadastrada. Registre uma entrada para adicionar estoque.')
+                action(lambda: repo.save_material(data, stock), 'Matéria-prima cadastrada.')
         return
     if section == 'Histórico':
         events = store.query(repo.EVENTS)
@@ -194,11 +195,13 @@ def inventory_page():
             data['name'] = st.text_input('Nome', m['name'])
             data['brand'] = st.text_input('Marca', m['brand'])
             data['unit_price'] = unit_price_input(repo.unit_cost(m), key=identifier)
+            stock = n(f"Quantidade em estoque ({m['unit']})", m['stock'])
             data['minimum'] = n('Estoque mínimo', m['minimum'])
             data['active'] = st.checkbox('Ativo', m['active'])
-            st.caption(f"Unidade de uso: {m['unit']}. A unidade é preservada para proteger o histórico.")
+            st.caption(f"Unidade de uso: {m['unit']}, preservada para proteger o histórico. "
+                       "Se a quantidade em estoque mudar, a diferença fica registrada no histórico como ajuste.")
             if st.form_submit_button('Salvar alterações'):
-                action(lambda: repo.save_material(data), 'Matéria-prima atualizada.')
+                action(lambda: repo.save_material(data, stock), 'Matéria-prima atualizada.')
         return
     token_key = 'stock_token_'+identifier+'_'+section
     token = st.session_state.setdefault(token_key, str(uuid4()))

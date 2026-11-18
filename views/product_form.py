@@ -158,14 +158,12 @@ def _new_material_form(fk, items):
             with c2:
                 unit_price = unit_price_input(key=fk)
             minimum = c1.number_input("Estoque mínimo (unidade de uso)", min_value=0.0, value=0.0)
-            stock = c2.number_input("Quantidade que você já tem (opcional)", min_value=0.0, value=0.0)
+            stock = c2.number_input("Quantidade em estoque hoje (unidade de uso)", min_value=0.0, value=0.0)
             quantity = st.number_input("Consumo por produto (unidade de uso)", min_value=0.000001, value=1.0, format="%g")
             if st.form_submit_button("Cadastrar e incluir na ficha"):
                 try:
                     material = repo.save_material(dict(name=name, brand=brand, unit=unit or "", unit_price=unit_price,
-                                                       minimum=minimum, stock=0, active=True))
-                    if stock:
-                        repo.move(material["SK"], "Ajuste de entrada", stock, str(uuid4()), note="Saldo inicial informado no cadastro do produto")
+                                                       minimum=minimum, stock=0, active=True), stock)
                 except (store.StorageError, ValueError) as exc:
                     st.error(str(exc))
                 else:

@@ -267,6 +267,21 @@ class ProductionTests(unittest.TestCase):
         repo.save_material(edited)
         self.assertEqual(repo.unit_cost(store.get(repo.MATERIALS, 'OLD')), Decimal('0.55'))
 
+    def test_stock_typed_in_registration_is_recorded_as_adjustment(self):
+        m = repo.save_material(dict(name='Fita', brand='M', unit='metro', unit_price=.5, minimum=0, active=True, stock=0), 20)
+        self.assertEqual(store.get(repo.MATERIALS, m['SK'])['stock'], 20)
+        m = store.get(repo.MATERIALS, m['SK'])
+        repo.save_material(dict(m, name='Fita cetim'), 15)
+        current = store.get(repo.MATERIALS, m['SK'])
+        self.assertEqual((current['stock'], current['name']), (15, 'Fita cetim'))
+        events = sorted((e['type'], e['quantity']) for e in store.query(repo.EVENTS))
+        self.assertEqual(events, [('Ajuste de entrada', 20), ('Ajuste de saída', -5)])
+        repo.save_material(dict(current, minimum=3))  # no stock argument: balance untouched, no event
+        self.assertEqual(store.get(repo.MATERIALS, m['SK'])['stock'], 15)
+        self.assertEqual(len(store.query(repo.EVENTS)), 2)
+        with self.assertRaises(ValueError):
+            repo.save_material(dict(store.get(repo.MATERIALS, m['SK'])), -1)
+
     def test_query_reads_all_pages(self):
         for i in range(4):
             store.put(dict(PK='PAGED', SK=str(i), payload='x'*300000))

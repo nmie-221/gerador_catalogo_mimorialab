@@ -77,7 +77,10 @@ def unit_cost(m):
     return decimal(m.get('price') or 0)/decimal(m.get('per') or 1, positive=True)
 
 
-def save_material(data):
+def save_material(data, stock=None):
+    """Create or edit a material. `stock`, when given, is the desired balance in
+    the unit of use; the difference is recorded as an adjustment in the history,
+    written in the same transaction as the material."""
     value = deepcopy(data)
     if not all(isinstance(value.get(k), str) and value[k].strip() for k in ['name', 'brand', 'unit']):
         raise ValueError('Preencha nome, marca e unidade de uso.')
@@ -87,15 +90,28 @@ def save_material(data):
     value['cost_mode'] = 'unit'
     if 'PK' not in value:
         value.update(PK=MATERIALS, SK=uuid4().hex, revision=0, stock=Decimal(0))
+        current = Decimal(0)
     else:
         previous = store.get(MATERIALS, value['SK'])
         if not previous or previous['revision'] != value['revision']:
             raise store.ConflictError('Material alterado em outra sessão. Atualize a página.')
-        if any(value[k] != previous[k] for k in ['unit', 'stock']):
-            raise ValueError('Unidade de uso e saldo não podem ser alterados no cadastro. Use movimentações para mudar o estoque.')
+        if value['unit'] != previous['unit']:
+            raise ValueError('A unidade de uso não pode ser alterada para preservar o histórico.')
+        current = decimal(previous['stock'])
+        value['stock'] = current
     expected = value['revision'] or None
     value['revision'] += 1
-    store.put(value, expected)
+    difference = decimal(stock, 'Quantidade em estoque') - current if stock is not None else Decimal(0)
+    if not difference:
+        store.put(value, expected)
+        return value
+    value['stock'] = current + difference
+    token = str(uuid4())
+    event = dict(PK=EVENTS, SK=token, date=timestamp(), type='Ajuste de entrada' if difference > 0 else 'Ajuste de saída',
+                 material_id=value['SK'], material_name=value['name'], quantity=difference, unit=value['unit'],
+                 unit_cost=value['unit_price'], price_paid=Decimal(0),
+                 note='Saldo inicial informado no cadastro' if expected is None else 'Saldo corrigido no cadastro')
+    store.transaction([(value, expected), (event, None)])
     return value
 
 
