@@ -18,7 +18,7 @@ from services import dynamodb as store
 from utils.pricing import decimal, quote
 from utils.total_cost import estimate
 from utils.validators import format_ncm
-from views.production import PURCHASE_UNITS, USAGE_UNITS, cost_fields, money, suggested_input
+from views.production import USAGE_UNITS, money, suggested_input, unit_price_input
 
 DOMAINS = [("categoria", "categorias", "Categoria"), ("tamanho", "tamanhos", "Tamanho"), ("cor", "cores", "Cor/tema"),
            ("material", "materiais", "Material"), ("qtd_kit", "kits", "Kit")]
@@ -154,22 +154,16 @@ def _new_material_form(fk, items):
             name = c1.text_input("Nome da matéria-prima")
             brand = c2.text_input("Marca")
             with c1:
-                pack = suggested_input("Unidade de compra", PURCHASE_UNITS, [m["pack"] for m in items], "Pacote")
-            with c2:
                 unit = suggested_input("Unidade de uso", USAGE_UNITS, [m["unit"] for m in items], "unidade")
-            per = c1.number_input("Quantidade de uso por embalagem", min_value=0.000001, value=1.0, format="%g")
-            price = c2.number_input("Preço de uma embalagem (R$)", min_value=0.0, value=0.0)
+            with c2:
+                unit_price = unit_price_input(key=fk)
             minimum = c1.number_input("Estoque mínimo (unidade de uso)", min_value=0.0, value=0.0)
-            packs = c2.number_input("Embalagens que você já tem (opcional)", min_value=0.0, value=0.0)
-            mode, unit_price = cost_fields(key=fk)
+            stock = c2.number_input("Quantidade em estoque hoje (unidade de uso)", min_value=0.0, value=0.0)
             quantity = st.number_input("Consumo por produto (unidade de uso)", min_value=0.000001, value=1.0, format="%g")
             if st.form_submit_button("Cadastrar e incluir na ficha"):
                 try:
-                    material = repo.save_material(dict(name=name, brand=brand, pack=pack or "", per=per, unit=unit or "",
-                                                       price=price, minimum=minimum, stock=0, active=True,
-                                                       cost_mode=mode, unit_price=unit_price))
-                    if packs:
-                        repo.move(material["SK"], "Entrada de compra", packs, str(uuid4()), price, "Saldo inicial informado no cadastro do produto")
+                    material = repo.save_material(dict(name=name, brand=brand, unit=unit or "", unit_price=unit_price,
+                                                       minimum=minimum, stock=0, active=True), stock)
                 except (store.StorageError, ValueError) as exc:
                     st.error(str(exc))
                 else:

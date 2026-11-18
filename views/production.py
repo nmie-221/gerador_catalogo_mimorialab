@@ -114,19 +114,11 @@ def suggested_input(label, defaults, existing=(), current=None):
                         placeholder='Selecione ou digite uma nova opção')
 
 
-def cost_fields(m=None, key=''):
-    """Choose how the cost per unit of use is defined (inside a form)."""
-    m = m or {}
-    modes = list(repo.COST_MODES)
-    mode = st.radio('Custo por unidade de uso', modes, format_func=repo.COST_MODES.get, horizontal=True,
-                    index=modes.index(m.get('cost_mode') or 'pack'), key=f'cost_mode_{key}')
-    unit_price = st.number_input('Preço por unidade de uso (R$)', min_value=0., value=float(m.get('unit_price') or 0),
-                                 step=.01, format='%.4f', key=f'unit_price_{key}',
-                                 help='Usado somente na opção "Informar o preço por unidade de uso". Não é recalculado nas entradas de compra.')
-    return mode, unit_price
+def unit_price_input(value=0, key=''):
+    return st.number_input('Preço por unidade de uso (R$)', min_value=0., value=float(value or 0), step=.01, format='%.4f',
+                           key=f'unit_price_{key}', help='Valor usado na ficha técnica. Não é recalculado nas entradas de compra.')
 
 
-PURCHASE_UNITS = ['Resma', 'Metro', 'Cm', 'Pacote', 'Rolo', 'Caixa', 'Folha', 'Unidade', 'Frasco', 'Pote', 'Litro', 'Quilo']
 USAGE_UNITS = ['folha', 'unidade', 'Resma', 'Metro', 'Cm', 'm²', 'grama', 'quilo', 'mililitro', 'litro']
 
 
@@ -156,15 +148,14 @@ def inventory_page():
             data = dict(
                 name=st.text_input('Nome'),
                 brand=st.text_input('Marca'),
-                pack=suggested_input('Unidade de compra', PURCHASE_UNITS, [m['pack'] for m in items], 'Resma'),
-                per=st.number_input('Quantidade de uso por embalagem', min_value=0.000001, value=500., step=1., format='%g'),
                 unit=suggested_input('Unidade de uso', USAGE_UNITS, [m['unit'] for m in items], 'folha'),
-                price=n('Preço de uma embalagem (R$)'), minimum=n('Estoque mínimo na unidade de uso'), stock=0, active=True,
+                unit_price=unit_price_input(key='new'),
+                minimum=n('Estoque mínimo na unidade de uso'), stock=0, active=True,
             )
-            data['cost_mode'], data['unit_price'] = cost_fields(key='new')
-            st.caption('Você pode selecionar uma sugestão ou digitar um novo valor. Preço e estoque mínimo continuam livres.')
+            stock = n('Quantidade em estoque hoje (unidade de uso)')
+            st.caption('Selecione uma unidade sugerida ou digite uma nova. O preço é o custo de uma unidade de uso (ex.: uma folha, um metro).')
             if st.form_submit_button('Salvar matéria-prima'):
-                action(lambda: repo.save_material(data), 'Matéria-prima cadastrada. Registre uma entrada para adicionar estoque.')
+                action(lambda: repo.save_material(data, stock), 'Matéria-prima cadastrada.')
         return
     if section == 'Histórico':
         events = store.query(repo.EVENTS)
@@ -181,14 +172,14 @@ def inventory_page():
         search = st.text_input('Buscar material ou marca')
         total = sum(float(m['stock'])*float(repo.unit_cost(m)) for m in items)
         st.metric('Valor estimado em estoque', money(total))
-        st.caption('Estimativa pelo último preço de compra. Não é custo médio contábil.')
+        st.caption('Estimativa pelo preço por unidade de uso informado. Não é custo médio contábil.')
         for m in items:
             if search.casefold() not in (m['name']+' '+m['brand']).casefold():
                 continue
             with st.container(border=True, key="card_material_"+m["SK"]):
                 st.subheader(m['name'])
                 st.caption(m['brand']+' · '+('Ativo' if m['active'] else 'Inativo'))
-                st.write(f"Saldo: **{float(m['stock']):g} {m['unit']}** · Custo por uso: **{money(repo.unit_cost(m))}**"+(' (informado)' if m.get('cost_mode') == 'unit' else ''))
+                st.write(f"Saldo: **{float(m['stock']):g} {m['unit']}** · Custo por uso: **{money(repo.unit_cost(m))}** por {m['unit']}")
                 if m['active'] and m['stock'] <= m['minimum']:
                     st.warning(f"Repor estoque. Mínimo: {float(m['minimum']):g} {m['unit']}")
         return
@@ -203,25 +194,23 @@ def inventory_page():
             data = deepcopy(m)
             data['name'] = st.text_input('Nome', m['name'])
             data['brand'] = st.text_input('Marca', m['brand'])
-            data['pack'] = suggested_input('Unidade de compra', PURCHASE_UNITS, [item['pack'] for item in items], m['pack'])
-            data['price'] = n('Preço da embalagem (R$)', m['price'])
-            data['cost_mode'], data['unit_price'] = cost_fields(m, key=identifier)
+            data['unit_price'] = unit_price_input(repo.unit_cost(m), key=identifier)
+            stock = n(f"Quantidade em estoque ({m['unit']})", m['stock'])
             data['minimum'] = n('Estoque mínimo', m['minimum'])
             data['active'] = st.checkbox('Ativo', m['active'])
-            st.caption(f"{float(m['per']):g} {m['unit']} por embalagem. Quantidade e unidade de uso são preservadas para proteger o histórico.")
+            st.caption(f"Unidade de uso: {m['unit']}, preservada para proteger o histórico. "
+                       "Se a quantidade em estoque mudar, a diferença fica registrada no histórico como ajuste.")
             if st.form_submit_button('Salvar alterações'):
-                action(lambda: repo.save_material(data), 'Matéria-prima atualizada.')
+                action(lambda: repo.save_material(data, stock), 'Matéria-prima atualizada.')
         return
     token_key = 'stock_token_'+identifier+'_'+section
     token = st.session_state.setdefault(token_key, str(uuid4()))
     with st.form('movement_'+token):
         kind = 'Entrada de compra' if section == 'Registrar entrada' else st.selectbox('Tipo', ['Perda', 'Ajuste de saída', 'Ajuste de entrada'])
-        quantity = st.number_input('Embalagens compradas' if section == 'Registrar entrada' else 'Quantidade na unidade de uso', min_value=.000001, value=1.)
-        price = n('Preço pago por embalagem (R$)', m['price']) if section == 'Registrar entrada' else 0
+        quantity = st.number_input(f"Quantidade ({m['unit']})", min_value=.000001, value=1.)
+        price = n('Valor total pago (R$, opcional)') if section == 'Registrar entrada' else 0
         note = st.text_input('Fornecedor / observação' if section == 'Registrar entrada' else 'Motivo obrigatório')
-        st.caption(f"Saldo: {float(m['stock']):g} {m['unit']}. Cada embalagem contém {float(m['per']):g} {m['unit']}.")
-        if m.get('cost_mode') == 'unit':
-            st.caption(f"O custo por uso continua {money(repo.unit_cost(m))}, informado no cadastro; o preço pago fica só no histórico.")
+        st.caption(f"Saldo: {float(m['stock']):g} {m['unit']}. Custo por uso: {money(repo.unit_cost(m))}, definido no cadastro; o valor pago fica só no histórico.")
         if st.form_submit_button('Confirmar movimentação'):
             def commit():
                 repo.move(identifier, kind, quantity, token, price, note)
